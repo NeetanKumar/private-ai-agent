@@ -27,6 +27,8 @@ from .egress import (AttachmentsBlocked, EgressBlocked, EgressRequest, FrontierN
 from .fragments import Fragment, Taint
 from .session import Session
 from .taint import RESERVED_SOURCES, SourceRegistry, model_output_taint
+from rag.retrieve import NOT_IN_DOCUMENTS, Retriever
+from rag.types import RagError
 
 MAX_CONTEXT_ITEMS = 50
 MAX_CONTEXT_CHARS = 400_000
@@ -48,6 +50,7 @@ class ChatInput:
     consent: Optional[bool]
     stream: bool
     model: Optional[str]
+    documents: bool = False
     params: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -104,12 +107,16 @@ def parse_chat(body: Any, header_model: Optional[str] = None) -> ChatInput:
     lane = body.get("lane", "auto")
     if lane not in ("auto", "private", "frontier"):
         raise BadRequest("invalid_lane")
+    documents = body.get("documents", False)
+    if not isinstance(documents, bool):
+        raise BadRequest("invalid_documents")
     consent = body.get("consent")
     if consent is not None and not isinstance(consent, bool):
         raise BadRequest("invalid_consent")
     return ChatInput(
         user_text=last_user, has_attachments=has_attach, context=ctx, lane_pref=lane,
         consent=consent, stream=bool(body.get("stream")), model=body.get("model") or header_model,
+        documents=documents,
         params={k: body[k] for k in PASSTHROUGH if k in body},
     )
 
@@ -118,8 +125,10 @@ def _safe_label(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", s)[:64]
 
 
-def build_local_messages(cfg: Settings, fragments: List[Fragment]) -> List[Dict[str, str]]:
-    msgs = [{"role": "system", "content": cfg.models.system_prompt}]
+def build_local_messages(cfg: Settings, fragments: List[Fragment],
+                         extra_system: Optional[str] = None) -> List[Dict[str, str]]:
+    system = cfg.models.system_prompt + (" " + extra_system if extra_system else "")
+    msgs = [{"role": "system", "content": system}]
     for f in fragments:
         if f.role == "context":
             text = f.text.replace("</context", "<\\/context")
@@ -141,12 +150,14 @@ def _envelope(text: str, model: str, usage: Any = None) -> Dict[str, Any]:
 
 
 def _decorate(payload: Dict[str, Any], lane: str, taint: Taint, offer: bool,
-              status: Optional[str] = None) -> Dict[str, Any]:
+              status: Optional[str] = None, citations: Optional[list] = None) -> Dict[str, Any]:
     payload["lane"] = lane
     payload["taint"] = taint.name
     payload["frontier_offer"] = offer
     if status:
         payload["frontier_status"] = status
+    if citations is not None:
+        payload["citations"] = citations
     return payload
 
 
@@ -173,7 +184,7 @@ def _private_unavailable(taint: Taint) -> JSONResponse:
 
 
 async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, session: Session,
-                      inp: ChatInput):
+                      inp: ChatInput, rag: Optional[Retriever] = None):
     # ---- /new: the only way taint is ever cleared ----
     if inp.user_text.strip() == "/new":
         session.clear()
@@ -186,21 +197,51 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
     except KeyError:
         raise BadRequest("unknown_model")
 
+    # ---- private documents: retrieval feeds the private lane only ----
+    hits = []
+    if inp.documents:
+        if rag is None or not cfg.rag.enabled:
+            raise BadRequest("rag_disabled")
+        if inp.lane_pref == "frontier":
+            return _json({"lane": "none", "taint": "PRIVATE", "error": "documents_private_lane_only"},
+                         "none", 403)
+        try:
+            hits = await rag.retrieve(session.user_id, inp.user_text)     # scoped to this user
+        except RagError:
+            return _json({"lane": "private", "taint": "PRIVATE", "error": "retrieval_unavailable"},
+                         "private", 503)
+    citations = [{"doc": h.doc_name, "chunk": h.chunk_idx, "source": h.source, "score": round(h.score, 3)}
+                 for h in hits] if inp.documents else None
+
     fc = cfg.frontier
     async with session.lock:
         session.turn += 1
         turn = session.turn
         for text, source in inp.context:
             session.add(Fragment(text, registry.taint_of(source), source, turn, "context"))
-        session.add(Fragment(inp.user_text, registry.taint_of("user_message"), "user_message", turn, "user"))
+        for h in hits:
+            # A chunk inherits its document's taint. The registry can only make it stricter.
+            session.add(Fragment(h.text, max(h.taint, registry.taint_of(h.source)),
+                                 f"{h.source}/{h.doc_name}", turn, "context"))
+        # Touching the private document store is itself private: the query is tagged PRIVATE
+        # (an unregistered origin), so even a zero-hit query taints the session.
+        session.add(Fragment(inp.user_text,
+                             registry.taint_of("document_query" if inp.documents else "user_message"),
+                             "document_query" if inp.documents else "user_message", turn, "user"))
+
+        if inp.documents and not hits:
+            session.add(Fragment(NOT_IN_DOCUMENTS, session.taint, "assistant", turn, "assistant"))
+            p = _decorate(_envelope(NOT_IN_DOCUMENTS, "retrieval-gate"), "private", session.taint, False,
+                          citations=[])
+            return _sse_single(p, "private") if inp.stream else _json(p, "private")
 
         if inp.consent is not None and fc.consent_scope == "session":
             session.consent = inp.consent
         consent_present = session.consent if fc.consent_scope == "session" else bool(inp.consent)
 
         taint = session.taint
-        wanted = inp.lane_pref == "frontier" or (
-            inp.lane_pref == "auto" and (fc.auto_route_clean or consent_present))
+        wanted = not inp.documents and (inp.lane_pref == "frontier" or (
+            inp.lane_pref == "auto" and (fc.auto_route_clean or consent_present)))
         status: Optional[str] = None
 
         if wanted:
@@ -230,7 +271,8 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
 
     # ---- private lane (lock released; the model call can be slow) ----
     ctx_taint = model_output_taint(snapshot)
-    body = {"model": model_id, "messages": build_local_messages(cfg, snapshot), **inp.params}
+    extra = cfg.rag.system_prompt if inp.documents else None
+    body = {"model": model_id, "messages": build_local_messages(cfg, snapshot, extra), **inp.params}
     url = cfg.model_server.base_url.rstrip("/") + "/chat/completions"
 
     def record(text: str) -> None:
@@ -238,7 +280,8 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
             session.add(Fragment(text, max(ctx_taint, session.taint), "assistant", turn, "assistant"))
 
     if inp.stream:
-        return await _private_stream(cfg, url, {**body, "stream": True}, ctx_taint, offer, status, record)
+        return await _private_stream(cfg, url, {**body, "stream": True}, ctx_taint, offer, status, record,
+                                     citations)
 
     try:
         async with httpx.AsyncClient(timeout=cfg.model_server.timeout_seconds) as c:
@@ -253,16 +296,16 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
         return _private_unavailable(taint)
     if r.status_code >= 400:
         return _json(_decorate(data if isinstance(data, dict) else {"error": "upstream_error"},
-                               "private", ctx_taint, offer, status), "private", r.status_code)
+                               "private", ctx_taint, offer, status, citations), "private", r.status_code)
     try:
         record(data["choices"][0]["message"].get("content") or "")
     except (KeyError, IndexError, TypeError, AttributeError):
         pass
-    return _json(_decorate(data, "private", ctx_taint, offer, status), "private")
+    return _json(_decorate(data, "private", ctx_taint, offer, status, citations), "private")
 
 
 async def _private_stream(cfg: Settings, url: str, body: dict, taint: Taint, offer: bool,
-                          status: Optional[str], record):
+                          status: Optional[str], record, citations: Optional[list] = None):
     client = httpx.AsyncClient(timeout=cfg.model_server.timeout_seconds)
     try:
         upstream = await client.send(client.build_request("POST", url, json=body), stream=True)
@@ -278,6 +321,8 @@ async def _private_stream(cfg: Settings, url: str, body: dict, taint: Taint, off
         parts: List[str] = []
         try:
             yield f": lane=private taint={taint.name} frontier_offer={str(offer).lower()}\n\n".encode()
+            if citations is not None:
+                yield f": citations={json.dumps(citations)}\n\n".encode()
             async for line in upstream.aiter_lines():
                 if line.startswith("data:") and "[DONE]" not in line:
                     try:

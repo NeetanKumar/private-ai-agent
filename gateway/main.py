@@ -20,6 +20,7 @@ from .config import Settings, get_settings
 from .lanes import BadRequest, handle_chat, parse_chat
 from .session import SessionStore
 from .taint import SourceRegistry
+from rag.factory import build_retriever
 
 log = logging.getLogger("gateway")
 
@@ -30,6 +31,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     registry = SourceRegistry(cfg.sources)
     audit = AuditLog(cfg.audit.path)
     sessions = SessionStore()
+    rag = build_retriever(cfg) if cfg.rag.enabled else None
     tokens: List[Tuple[str, str]] = []
     for u in cfg.users:
         tok = os.environ.get(u.token_env, "")
@@ -37,7 +39,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             tokens.append((u.id, tok))
         else:
             log.warning("user %s has no token in env %s; disabled", u.id, u.token_env)
-    app.state.cfg, app.state.audit, app.state.sessions = cfg, audit, sessions
+    app.state.cfg, app.state.audit, app.state.sessions, app.state.rag = cfg, audit, sessions, rag
 
     def authenticate(request: Request) -> Optional[str]:
         h = request.headers.get("authorization", "")
@@ -82,7 +84,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return JSONResponse({"error": "invalid_json"}, status_code=400)
         try:
             inp = parse_chat(body, request.headers.get("X-Model"))
-            return await handle_chat(cfg, registry, audit, sessions.get(uid), inp)
+            return await handle_chat(cfg, registry, audit, sessions.get(uid), inp, rag)
         except BadRequest as e:
             return JSONResponse({"error": e.code}, status_code=e.status)
 
