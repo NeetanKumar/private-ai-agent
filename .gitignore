@@ -18,3 +18,4 @@ models/
 .chroma/
 # os
 .DS_Store
+infra/.env
