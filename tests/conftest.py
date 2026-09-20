@@ -1,6 +1,7 @@
 import copy
 import os
 import pathlib
+import tempfile
 
 import pytest
 import yaml
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 os.environ["GATEWAY_CONFIG"] = str(ROOT / "infra" / "config.yaml")
 os.environ.setdefault("GATEWAY_TOKEN_OWNER", "test-owner-token")
+os.environ.setdefault("RAG_DB_PATH", os.path.join(tempfile.mkdtemp(prefix="rag-test-"), "rag.db"))
 
 from gateway.config import Settings  # noqa: E402
 from gateway.main import create_app  # noqa: E402
@@ -59,6 +61,8 @@ def make_rig(tmp_path, monkeypatch):
                                base_url=frontier.url, timeout_seconds=5)
         raw["users"].append({"id": "guest", "token_env": "GATEWAY_TOKEN_GUEST"})
         raw["sources"].update({"public_docs": "CLEAN", "crm": "PRIVATE", **(extra_sources or {})})
+        raw["rag"].update(db_path=str(tmp_path / f"rag-{len(made)}.db"), min_score=0.10,
+                          embedder={"kind": "hashing", "dim": 2048})
         audit_path = tmp_path / f"audit-{len(made)}.jsonl"
         raw["audit"]["path"] = str(audit_path)
         app = create_app(Settings(**raw))

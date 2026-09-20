@@ -1,0 +1,60 @@
+{"id": "q01", "question": "How many paid vacation days do I get each year?", "doc": "hr_leave_policy.md", "must_contain": "24 days of paid annual leave"}
+{"id": "q02", "question": "Until when can I use carried-over leave?", "doc": "hr_leave_policy.md", "must_contain": "March 31"}
+{"id": "q03", "question": "When do I need to provide a medical certificate for being ill?", "doc": "hr_leave_policy.md", "must_contain": "3 consecutive sick days"}
+{"id": "q04", "question": "How long is paid leave for the main caregiver of a new child?", "doc": "hr_leave_policy.md", "must_contain": "16 weeks"}
+{"id": "q05", "question": "How many days off do I get after the death of a close relative?", "doc": "hr_leave_policy.md", "must_contain": "5 days for immediate family"}
+{"id": "q06", "question": "What is the minimum password length?", "doc": "security_policy.md", "must_contain": "14 characters"}
+{"id": "q07", "question": "How often do admin passwords have to change?", "doc": "security_policy.md", "must_contain": "every 90 days"}
+{"id": "q08", "question": "What second factor is needed to access production systems?", "doc": "security_policy.md", "must_contain": "hardware security key"}
+{"id": "q09", "question": "How quickly must I report a stolen laptop?", "doc": "security_policy.md", "must_contain": "within 2 hours"}
+{"id": "q10", "question": "Can I plug in a USB flash drive?", "doc": "security_policy.md", "must_contain": "USB mass storage is blocked by default"}
+{"id": "q11", "question": "How fast must someone be paged for a complete outage?", "doc": "incident_runbook.md", "must_contain": "within 5 minutes"}
+{"id": "q12", "question": "How often is the status page refreshed during a major outage?", "doc": "incident_runbook.md", "must_contain": "updated every 30 minutes"}
+{"id": "q13", "question": "When does on-call duty change hands?", "doc": "incident_runbook.md", "must_contain": "every Monday at 10:00"}
+{"id": "q14", "question": "What happens if the primary on-call does not respond?", "doc": "incident_runbook.md", "must_contain": "escalates to the secondary"}
+{"id": "q15", "question": "How soon after an incident is the postmortem written?", "doc": "incident_runbook.md", "must_contain": "within 5 business days"}
+{"id": "q16", "question": "What is the daily food allowance on business trips?", "doc": "finance_expenses.md", "must_contain": "$60 per day"}
+{"id": "q17", "question": "What is the maximum hotel price per night?", "doc": "finance_expenses.md", "must_contain": "$220 per night"}
+{"id": "q18", "question": "Which cabin class is allowed on long-haul flights?", "doc": "finance_expenses.md", "must_contain": "Premium economy"}
+{"id": "q19", "question": "Who signs off on a $25,000 purchase?", "doc": "finance_expenses.md", "must_contain": "CFO approval"}
+{"id": "q20", "question": "How much do I get per mile when driving my own car?", "doc": "finance_expenses.md", "must_contain": "$0.62 per mile"}
+{"id": "q21", "question": "How much storage does the free plan offer?", "doc": "product_orchard_spec.md", "must_contain": "free tier includes 5 GB"}
+{"id": "q22", "question": "What does the Pro plan cost?", "doc": "product_orchard_spec.md", "must_contain": "$12 per month"}
+{"id": "q23", "question": "What happens when the same file is edited on two devices?", "doc": "product_orchard_spec.md", "must_contain": "conflicted copy"}
+{"id": "q24", "question": "How many API calls per minute are allowed?", "doc": "product_orchard_spec.md", "must_contain": "600 requests per minute"}
+{"id": "q25", "question": "What encryption protects stored data?", "doc": "product_orchard_spec.md", "must_contain": "AES-256"}
+{"id": "q26", "question": "How long is an access token valid?", "doc": "api_guide.md", "must_contain": "expire after 60 minutes"}
+{"id": "q27", "question": "What is the largest page size for list calls?", "doc": "api_guide.md", "must_contain": "200 items"}
+{"id": "q28", "question": "How long are idempotency keys stored?", "doc": "api_guide.md", "must_contain": "24 hours"}
+{"id": "q29", "question": "When will the old v1 API be turned off?", "doc": "api_guide.md", "must_contain": "2027-03-31"}
+{"id": "q30", "question": "Which languages have official client libraries?", "doc": "api_guide.md", "must_contain": "Python and Go"}
+{"id": "q31", "question": "What is the monthly hosting fee?", "doc": "vendor_contract_summary.md", "must_contain": "$18,500"}
+{"id": "q32", "question": "What uptime is guaranteed?", "doc": "vendor_contract_summary.md", "must_contain": "99.95%"}
+{"id": "q33", "question": "How much notice is needed to cancel the contract?", "doc": "vendor_contract_summary.md", "must_contain": "90 days written notice"}
+{"id": "q34", "question": "How long is the contract term?", "doc": "vendor_contract_summary.md", "must_contain": "36 months"}
+{"id": "q35", "question": "What is the vendor's maximum liability?", "doc": "vendor_contract_summary.md", "must_contain": "12 months of fees"}
+{"id": "q36", "question": "What time should I show up on my first day?", "doc": "onboarding_guide.md", "must_contain": "9:30"}
+{"id": "q37", "question": "How long does my onboarding buddy stay with me?", "doc": "onboarding_guide.md", "must_contain": "buddy for 90 days"}
+{"id": "q38", "question": "How much money can I claim for home office equipment?", "doc": "onboarding_guide.md", "must_contain": "$500"}
+{"id": "q39", "question": "How long is the trial period for new employees?", "doc": "onboarding_guide.md", "must_contain": "probation period is 6 months"}
+{"id": "q40", "question": "When must the billing migration be finished?", "doc": "meeting_notes_q3.md", "must_contain": "November 15"}
+{"id": "q41", "question": "How many engineers can we hire?", "doc": "meeting_notes_q3.md", "must_contain": "Six additional engineers"}
+{"id": "q42", "question": "By how much is the marketing budget cut?", "doc": "meeting_notes_q3.md", "must_contain": "reduced by 8%"}
+{"id": "q43", "question": "When does the mobile app go live?", "doc": "meeting_notes_q3.md", "must_contain": "October 21"}
+{"id": "q44", "question": "Where do we gather if the fire alarm goes off?", "doc": "facilities_guide.txt", "must_contain": "north car park"}
+{"id": "q45", "question": "How long can I reserve a conference room?", "doc": "facilities_guide.txt", "must_contain": "maximum of 2 hours"}
+{"id": "q46", "question": "How many parking bays are there?", "doc": "facilities_guide.txt", "must_contain": "40 parking spaces"}
+{"id": "q47", "question": "Where can I leave my bike?", "doc": "facilities_guide.txt", "must_contain": "basement"}
+{"id": "q48", "question": "What total budget did the board approve for 2027?", "doc": "board_summary.pdf", "must_contain": "42 million"}
+{"id": "q49", "question": "When does the hiring freeze end?", "doc": "board_summary.pdf", "must_contain": "lifted in January"}
+{"id": "q50", "question": "When is the Lisbon move now planned?", "doc": "board_summary.pdf", "must_contain": "deferred to 2028"}
+{"id": "n01", "question": "What is the recipe for sourdough bread?", "no_answer": true, "kind": "off_topic"}
+{"id": "n02", "question": "Who won the football world cup in 2022?", "no_answer": true, "kind": "off_topic"}
+{"id": "n03", "question": "How do I configure a Kubernetes ingress controller?", "no_answer": true, "kind": "off_topic"}
+{"id": "n04", "question": "What is the capital of Australia?", "no_answer": true, "kind": "off_topic"}
+{"id": "n05", "question": "Explain how photosynthesis works.", "no_answer": true, "kind": "off_topic"}
+{"id": "n06", "question": "What is the weather forecast for tomorrow?", "no_answer": true, "kind": "off_topic"}
+{"id": "n07", "question": "What is the company's dress code for client meetings?", "no_answer": true, "kind": "near_miss"}
+{"id": "n08", "question": "How many stock options do new hires receive?", "no_answer": true, "kind": "near_miss"}
+{"id": "n09", "question": "What is the maximum size of an Orchard shared folder?", "no_answer": true, "kind": "near_miss"}
+{"id": "n10", "question": "Which programming language is the backend written in?", "no_answer": true, "kind": "near_miss"}
