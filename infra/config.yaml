@@ -43,3 +43,16 @@ frontier:
 
 audit:
   path: /audit/audit.jsonl
+
+rag:
+  enabled: true
+  store: sqlite
+  db_path: /data/rag/rag.db
+  top_k: 5
+  min_score: 0.10              # deterministic "not in documents" gate; only removes clearly unrelated
+                               # queries. Uncalibrated for the real embedder: run tests/rag/report.py
+                               # (floor sweep) on the GPU host and set it there. The model handles the rest.
+  chunk_chars: 600
+  embedder:
+    kind: ollama               # ollama | hashing (offline, lexical, for tests)
+    model: nomic-embed-text    # re-check availability and pick the embedding model at GPU setup

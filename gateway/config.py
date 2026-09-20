@@ -63,6 +63,27 @@ class FrontierCfg(_Strict):
     system_prompt: str = "You are a helpful assistant."
 
 
+class EmbedderCfg(_Strict):
+    kind: Literal["hashing", "ollama"] = "ollama"
+    model: str = "nomic-embed-text"      # used when kind == ollama
+    dim: int = 2048                      # used when kind == hashing
+    base_url: str = ""                   # empty: derive from model_server.base_url
+
+
+class RagCfg(_Strict):
+    enabled: bool = True
+    store: Literal["sqlite"] = "sqlite"
+    db_path: str = "/data/rag/rag.db"
+    embedder: EmbedderCfg = EmbedderCfg()
+    top_k: int = 5
+    min_score: float = 0.10              # below this a chunk is not evidence; calibrate per embedder
+    chunk_chars: int = 600
+    system_prompt: str = (
+        "Answer using only the <context> passages. Do not use outside knowledge. If the passages "
+        "do not contain the answer, reply exactly: not in documents"
+    )
+
+
 class AuditCfg(_Strict):
     path: str = "/audit/audit.jsonl"
 
@@ -75,6 +96,7 @@ class Settings(_Strict):
     sources: Dict[str, str] = {}
     frontier: FrontierCfg = FrontierCfg()
     audit: AuditCfg = AuditCfg()
+    rag: RagCfg = RagCfg()
 
     @field_validator("sources")
     @classmethod
@@ -99,6 +121,9 @@ def _apply_env(raw: dict) -> dict:
         base = base.rstrip("/")
         raw["model_server"]["base_url"] = base + "/v1"
         raw["model_server"]["health_url"] = base + "/api/tags"
+    db = os.environ.get("RAG_DB_PATH")
+    if db:
+        raw.setdefault("rag", {})["db_path"] = db
     return raw
 
 
