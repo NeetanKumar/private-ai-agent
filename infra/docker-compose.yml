@@ -17,7 +17,7 @@ services:
       - ./config.yaml:/app/infra/config.yaml:ro
       - audit_log:/audit
       - rag_data:/data/rag
-      - ../data/inbox:/inbox:ro       # drop files here, then `make ingest`
+      - ../data/inbox:/inbox:ro       # one folder per user: data/inbox/<user id>/ (read-only tools + ingest)
     ports:
       # Loopback only. Remote access is via SSH tunnel or the host's Tailscale interface.
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
