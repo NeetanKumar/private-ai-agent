@@ -9,18 +9,20 @@ services:
     build:
       context: ..
       dockerfile: gateway/Dockerfile
+    # Every value in infra/.env (user tokens, the frontier key) reaches the gateway, so adding a user
+    # is a config.yaml entry plus one line in infra/.env, with no change to this file.
+    env_file: [.env]
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      GATEWAY_TOKEN_OWNER: ${GATEWAY_TOKEN_OWNER:?set GATEWAY_TOKEN_OWNER in infra/.env}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./config.yaml:/app/infra/config.yaml:ro
       - audit_log:/audit
       - rag_data:/data/rag
       - ../data/inbox:/inbox:ro       # one folder per user: data/inbox/<user id>/ (read-only tools + ingest)
     ports:
-      # Loopback only. Remote access is via SSH tunnel or the host's Tailscale interface.
-      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+      # Loopback by default. To reach it over Tailscale, set GATEWAY_BIND to the host's tailnet IP.
+      # Never 0.0.0.0.
+      - "${GATEWAY_BIND:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks: [edge, internal]
