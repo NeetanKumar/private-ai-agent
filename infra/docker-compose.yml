@@ -1,0 +1,53 @@
+# Private AI Agent Template
+# Profiles:
+#   gpu      -> runs Ollama in a container with NVIDIA GPU passthrough (rented GPU host)
+#   mac-dev  -> no Ollama container; gateway talks to Ollama running natively on the host
+name: private-ai
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    volumes:
+      - ./config.yaml:/app/infra/config.yaml:ro
+    ports:
+      # Loopback only. Remote access is via SSH tunnel or the host's Tailscale interface.
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [edge, internal]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  ollama:
+    profiles: [gpu]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [internal]          # no published ports, no external route
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+networks:
+  edge: {}
+  internal:
+    internal: true
+
+volumes:
+  ollama_models: {}
