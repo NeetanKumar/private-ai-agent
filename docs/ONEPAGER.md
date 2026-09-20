@@ -1,6 +1,6 @@
 # Private AI Agent Template — One-Pager (Phase 0)
 
-Status: model selection, verified against public sources in September 2026. Nothing here is built yet.
+Status: written in Phase 0. The model choices were checked against public sources in September 2026 and should be re-checked before committing to a host. The project is now built; see `TEST_RESULTS.md` for what has and has not been verified.
 
 ## Purpose
 A self-hosted, privacy-first agent. Private data is answered by a local open-weight model only. A second lane calls Claude through the commercial API, and only for context that is provably clean and, by default, only after explicit consent. Routing is mechanism, not judgment: a deterministic taint check runs first and can never be overridden.
@@ -79,4 +79,4 @@ Private data lives on a third party's hardware. Mitigations, all required:
 - Private lane fails closed if the local model is down.
 - Accepted by the privacy suite: canary strings never reach the frontier across 200 mixed queries, taint overrides consent, taint persists across turns, audit count matches outbound connections, prompt-injection documents cannot alter taint.
 
-Phases 3 to 5 (retrieval, agent and permission layer, packaging and results) follow after review of these two.
+Phases 3 to 5 (retrieval, agent and permission layer, packaging and results) were built after review. See `PLAN.md` for status and `TEST_RESULTS.md` for what has and has not been verified.
