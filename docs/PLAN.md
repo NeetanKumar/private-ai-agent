@@ -53,7 +53,7 @@ GPU rental (Sept 2026, verify at purchase): RTX 4090 24 GB ≈ $0.34–0.69/h (R
 **Staleness / re-check list:** Qwen3.8-27B (one source), Muse Glimmer vLLM parser and Ollama tag, Qwen3.5-9B tool-call reliability under Ollama (OpenClaw docs mention Qwen sometimes emits raw-text tool calls — `tool_choice: required` workaround), Hermes 4 14B context length, exact licence text on each HF card, GPU prices, OpenClaw config schema (docs site was down; used GitHub raw + third-party mirror).
 
 ## Steps (Phase 0 only)
-1. `git init` in `/Users/neetan.kumar/Desktop/private-ai`; create `.gitignore` (`.env`, `*.key`, `infra/secrets/`, `__pycache__`, `.venv`, model caches). Commit: "chore: init repo".
+1. `git init` in the project folder; create `.gitignore` (`.env`, `*.key`, `infra/secrets/`, `__pycache__`, `.venv`, model caches). Commit: "chore: init repo".
 2. Create the repo skeleton dirs from PLAN.md (`gateway/ agent/ rag/ infra/ tests/ docs/`) with `.gitkeep` only — no code. Commit: "chore: repo layout".
 3. Write `docs/ONEPAGER.md` with sections: Purpose; Chosen models (with reasoning and the comparison table above); Rejected alternatives and why; Where knowledge may be stale / re-check before committing; Stack (OpenClaw chassis, Ollama→vLLM, FastAPI gateway, Docker Compose, Tailscale); Deployment target and GPU sizing (24 GB vs 48 GB); Privacy caveats of a rented GPU; What week one produces (Phase 1 + Phase 2 deliverables and their acceptance tests). No client, company or individual names — "Private AI Agent Template" only. Commit: "docs: phase 0 one-pager".
 4. Summarise and STOP for review per PLAN.md checkpoint.
