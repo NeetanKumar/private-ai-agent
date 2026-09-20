@@ -99,7 +99,8 @@ async def live(url: str, token: str):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--min-score", type=float, default=0.2)
+    from gateway.config import get_settings                 # default: the value that is actually shipped
+    ap.add_argument("--min-score", type=float, default=get_settings().rag.min_score)
     ap.add_argument("--live", nargs=2, metavar=("GATEWAY_URL", "TOKEN"))
     a = ap.parse_args()
     asyncio.run(live(*a.live) if a.live else offline(a.min_score))
