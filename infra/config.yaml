@@ -1,0 +1,18 @@
+# Private AI Agent Template — single source of truth for models and gateway behaviour.
+# No model name, parser flag or context size should be hard-coded anywhere else.
+
+gateway:
+  host: 0.0.0.0            # inside the container; the host port is published on 127.0.0.1 only
+  port: 8080
+
+model_server:
+  # Any OpenAI-compatible server (Ollama now, vLLM later). Overridable with OLLAMA_BASE_URL.
+  base_url: http://ollama:11434/v1
+  health_url: http://ollama:11434/api/tags
+  timeout_seconds: 300
+
+models:
+  default: daily
+  aliases:
+    daily:     { id: "qwen3.5:9b",  context: 262144 }
+    on-demand: { id: "qwen3.6:27b", context: 262144 }
