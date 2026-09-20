@@ -19,3 +19,5 @@ models/
 # os
 .DS_Store
 infra/.env
+data/inbox/*
+!data/inbox/.gitkeep

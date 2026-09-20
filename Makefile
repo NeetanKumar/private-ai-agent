@@ -1,7 +1,7 @@
 COMPOSE = docker compose -f infra/docker-compose.yml --env-file infra/.env
 PY ?= python3
 
-.PHONY: up up-mac down logs pull-models pull-models-mac test venv
+.PHONY: up up-mac down logs pull-models pull-models-mac test venv ingest docs-list
 
 up:            ## rented GPU host: gateway + Ollama container
 	$(COMPOSE) --profile gpu up -d --build
@@ -26,3 +26,10 @@ venv:
 
 test:
 	.venv/bin/python -m pytest tests -q
+
+# usage: make ingest USER_ID=owner SOURCE=my_notes FILES="/inbox/a.md /inbox/b.pdf"
+ingest:        ## ingest files from data/inbox into a user's private store
+	$(COMPOSE) run --rm --no-deps gateway python -m rag.ingest --user $(USER_ID) --source $(SOURCE) $(FILES)
+
+docs-list:
+	$(COMPOSE) run --rm --no-deps gateway python -m rag.ingest --user $(USER_ID) --list
