@@ -6,7 +6,7 @@ future change truncates history for context length, taint cannot drop.
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from .fragments import Fragment, Taint
 
@@ -14,11 +14,21 @@ from .fragments import Fragment, Taint
 class Session:
     def __init__(self, user_id: str):
         self.user_id = user_id
-        self.lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
         self._fragments: List[Fragment] = []
         self._taint = Taint.CLEAN
         self.consent = False
         self.turn = 0
+        # tool_call_id -> (tool name, taint of the call's arguments). Only calls the gateway itself
+        # issued (after permission checks) can ever receive a result.
+        self.pending_calls: Dict[str, Tuple[str, Taint]] = {}
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Created on first use, inside the running event loop, so a Session can be built anywhere."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def taint(self) -> Taint:
@@ -38,6 +48,7 @@ class Session:
         self._taint = Taint.CLEAN
         self.consent = False
         self.turn = 0
+        self.pending_calls.clear()
 
 
 class SessionStore:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Iterable
+from typing import Iterable, Optional
 
 
 class Taint(IntEnum):
@@ -18,7 +18,9 @@ class Fragment:
     taint: Taint
     origin: str          # source name from the registry, or "user_message" / "assistant"
     turn: int
-    role: str = "user"   # user | assistant | context
+    role: str = "user"   # user | assistant | context | tool
+    tool_calls: Optional[str] = None      # JSON string of validated calls, on assistant fragments
+    tool_call_id: Optional[str] = None    # on tool-result fragments
 
 
 def context_taint(fragments: Iterable[Fragment]) -> Taint:

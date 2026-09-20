@@ -56,3 +56,15 @@ rag:
   embedder:
     kind: ollama               # ollama | hashing (offline, lexical, for tests)
     model: nomic-embed-text    # re-check availability and pick the embedding model at GPU setup
+
+tools:
+  # Read-only tools only. This list can narrow the built-in allowlist but never extend it:
+  # naming any other tool (write, exec, web, ...) stops the gateway at startup.
+  enabled: [list_files, read_file, search_files, context_query]
+  files_root: /inbox            # each user sees only <files_root>/<user id>/
+  max_result_chars: 20000
+  max_calls_per_turn: 4
+
+security:
+  path: /audit/security.jsonl
+  sanitize_output: true
