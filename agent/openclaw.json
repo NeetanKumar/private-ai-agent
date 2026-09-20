@@ -1,0 +1,37 @@
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "private-gateway": {
+        "baseUrl": "http://gateway:8080/v1",
+        "apiKey": "${GATEWAY_TOKEN_OWNER}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "daily",
+            "name": "Daily driver (local, via gateway)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 262144,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "models": { "private-gateway/daily": { "alias": "daily" } }
+    },
+    "entries": [
+      {
+        "name": "private-readonly",
+        "tools": {
+          "profile": "minimal",
+          "deny": ["group:fs", "group:runtime", "group:web", "exec", "process", "write", "edit", "apply_patch"]
+        }
+      }
+    ]
+  }
+}
