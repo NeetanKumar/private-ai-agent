@@ -1,113 +1,126 @@
-"""Phase 1 gateway: health + OpenAI-compatible proxy to the local model server.
+"""Private AI Agent Template gateway (FastAPI).
 
-Fails closed: if the local model is unreachable the caller gets a 503 from the private lane.
-There is no other upstream in this phase, and none is ever used as a fallback.
+Two lanes: PRIVATE (default, local model only) and FRONTIER (Claude via commercial API, only
+through egress()). Auth is a per-user bearer token; each user has an isolated session.
 """
 from __future__ import annotations
 
+import hmac
 import json
-from typing import AsyncIterator
+import logging
+import os
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
+from .audit import AuditLog
 from .config import Settings, get_settings
+from .lanes import BadRequest, handle_chat, parse_chat
+from .session import SessionStore
+from .taint import SourceRegistry
 
-app = FastAPI(title="Private AI Agent Template gateway")
-LANE = "private"
-
-
-def _client(cfg: Settings) -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=cfg.model_server.timeout_seconds)
+log = logging.getLogger("gateway")
 
 
-def _unavailable() -> JSONResponse:
-    return JSONResponse(
-        status_code=503,
-        content={"lane": LANE, "error": "local_model_unavailable"},
-        headers={"X-Lane": LANE},
-    )
+def create_app(settings: Optional[Settings] = None) -> FastAPI:
+    cfg = settings or get_settings()
+    app = FastAPI(title="Private AI Agent Template gateway")
+    registry = SourceRegistry(cfg.sources)
+    audit = AuditLog(cfg.audit.path)
+    sessions = SessionStore()
+    tokens: List[Tuple[str, str]] = []
+    for u in cfg.users:
+        tok = os.environ.get(u.token_env, "")
+        if tok:
+            tokens.append((u.id, tok))
+        else:
+            log.warning("user %s has no token in env %s; disabled", u.id, u.token_env)
+    app.state.cfg, app.state.audit, app.state.sessions = cfg, audit, sessions
 
+    def authenticate(request: Request) -> Optional[str]:
+        h = request.headers.get("authorization", "")
+        if not h.lower().startswith("bearer "):
+            return None
+        presented = h[7:].strip().encode()
+        found: Optional[str] = None
+        for uid, tok in tokens:                      # no early exit: constant work per user
+            if hmac.compare_digest(presented, tok.encode()):
+                found = uid
+        return found
 
-@app.get("/health")
-async def health() -> JSONResponse:
-    cfg = get_settings()
-    try:
-        async with _client(cfg) as c:
-            r = await c.get(cfg.model_server.health_url, timeout=5)
-            r.raise_for_status()
-        return JSONResponse({"status": "ok", "model_server": "up"})
-    except httpx.HTTPError:
-        return JSONResponse({"status": "degraded", "model_server": "down"}, status_code=503)
+    def unauthorized() -> JSONResponse:
+        return JSONResponse({"error": "unauthorized"}, status_code=401,
+                            headers={"WWW-Authenticate": "Bearer"})
 
-
-@app.get("/v1/models")
-async def list_models() -> dict:
-    cfg = get_settings()
-    return {
-        "object": "list",
-        "data": [{"id": alias, "object": "model", "owned_by": "local"} for alias in cfg.models.aliases],
-    }
-
-
-@app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
-    cfg = get_settings()
-    try:
-        body = await request.json()
-    except json.JSONDecodeError:
-        return JSONResponse(status_code=400, content={"error": "invalid_json"})
-    if not isinstance(body, dict):
-        return JSONResponse(status_code=400, content={"error": "invalid_body"})
-    try:
-        body["model"] = cfg.resolve_model(body.get("model") or request.headers.get("X-Model"))
-    except KeyError:
-        return JSONResponse(status_code=400, content={"error": "unknown_model"})
-
-    url = cfg.model_server.base_url.rstrip("/") + "/chat/completions"
-
-    if body.get("stream"):
-        return await _stream(cfg, url, body)
-
-    try:
-        async with _client(cfg) as c:
-            r = await c.post(url, json=body)
-    except httpx.HTTPError:
-        return _unavailable()
-    if r.status_code >= 500:
-        return _unavailable()
-    data = r.json()
-    if isinstance(data, dict):
-        data["lane"] = LANE
-    return JSONResponse(data, status_code=r.status_code, headers={"X-Lane": LANE})
-
-
-async def _stream(cfg: Settings, url: str, body: dict):
-    client = _client(cfg)
-    try:
-        req = client.build_request("POST", url, json=body)
-        upstream = await client.send(req, stream=True)
-    except httpx.HTTPError:
-        await client.aclose()
-        return _unavailable()
-    if upstream.status_code >= 500:
-        await upstream.aclose()
-        await client.aclose()
-        return _unavailable()
-
-    async def gen() -> AsyncIterator[bytes]:
+    @app.get("/health")
+    async def health() -> JSONResponse:
         try:
-            yield b": lane=private\n\n"
-            async for chunk in upstream.aiter_raw():
-                yield chunk
+            async with httpx.AsyncClient(timeout=5) as c:
+                r = await c.get(cfg.model_server.health_url)
+                r.raise_for_status()
+            return JSONResponse({"status": "ok", "model_server": "up"})
         except httpx.HTTPError:
-            yield b'data: {"lane":"private","error":"local_model_unavailable"}\n\n'
-        finally:
-            await upstream.aclose()
-            await client.aclose()
+            return JSONResponse({"status": "degraded", "model_server": "down"}, status_code=503)
 
-    return StreamingResponse(
-        gen(), status_code=upstream.status_code, media_type="text/event-stream",
-        headers={"X-Lane": LANE},
-    )
+    @app.get("/v1/models")
+    async def list_models(request: Request):
+        if authenticate(request) is None:
+            return unauthorized()
+        return {"object": "list", "data": [
+            {"id": a, "object": "model", "owned_by": "local"} for a in cfg.models.aliases]}
+
+    @app.post("/v1/chat/completions")
+    async def chat_completions(request: Request):
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "invalid_json"}, status_code=400)
+        try:
+            inp = parse_chat(body, request.headers.get("X-Model"))
+            return await handle_chat(cfg, registry, audit, sessions.get(uid), inp)
+        except BadRequest as e:
+            return JSONResponse({"error": e.code}, status_code=e.status)
+
+    @app.get("/session")
+    async def session_info(request: Request):
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        s = sessions.get(uid)
+        return {"user": uid, "taint": s.taint.name, "fragments": len(s.fragments),
+                "consent": s.consent, "consent_scope": cfg.frontier.consent_scope,
+                "auto_route_clean": cfg.frontier.auto_route_clean}
+
+    @app.post("/session/new")
+    async def session_new(request: Request):
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        sessions.get(uid).clear()
+        return {"user": uid, "taint": "CLEAN", "fragments": 0}
+
+    @app.post("/session/consent")
+    async def session_consent(request: Request):
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        if cfg.frontier.consent_scope != "session":
+            return JSONResponse({"error": "consent_scope_is_request"}, status_code=400)
+        try:
+            val = (await request.json()).get("consent")
+        except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+            val = None
+        if not isinstance(val, bool):
+            return JSONResponse({"error": "invalid_consent"}, status_code=400)
+        sessions.get(uid).consent = val
+        return {"user": uid, "consent": val}
+
+    return app
+
+
+app = create_app() if os.environ.get("GATEWAY_CONFIG") or os.path.exists("infra/config.yaml") else None
