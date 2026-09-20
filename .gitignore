@@ -1,0 +1,20 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+infra/secrets/
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# runtime data
+audit/*.jsonl
+*.log
+# model / vector caches
+models/
+.chroma/
+# os
+.DS_Store
