@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import httpx
@@ -17,7 +18,9 @@ from fastapi.responses import JSONResponse
 
 from .audit import AuditLog
 from .config import Settings, get_settings
+from . import tools as toolmod
 from .lanes import BadRequest, handle_chat, parse_chat
+from .permissions import SecurityLog
 from .session import SessionStore
 from .taint import SourceRegistry
 from rag.factory import build_retriever
@@ -30,6 +33,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app = FastAPI(title="Private AI Agent Template gateway")
     registry = SourceRegistry(cfg.sources)
     audit = AuditLog(cfg.audit.path)
+    sec = SecurityLog(cfg.security.path)
     sessions = SessionStore()
     rag = build_retriever(cfg) if cfg.rag.enabled else None
     tokens: List[Tuple[str, str]] = []
@@ -40,6 +44,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         else:
             log.warning("user %s has no token in env %s; disabled", u.id, u.token_env)
     app.state.cfg, app.state.audit, app.state.sessions, app.state.rag = cfg, audit, sessions, rag
+    app.state.sec = sec
 
     def authenticate(request: Request) -> Optional[str]:
         h = request.headers.get("authorization", "")
@@ -84,9 +89,41 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return JSONResponse({"error": "invalid_json"}, status_code=400)
         try:
             inp = parse_chat(body, request.headers.get("X-Model"))
-            return await handle_chat(cfg, registry, audit, sessions.get(uid), inp, rag)
+            return await handle_chat(cfg, registry, audit, sessions.get(uid), inp, rag, sec)
         except BadRequest as e:
             return JSONResponse({"error": e.code}, status_code=e.status)
+
+    @app.get("/v1/tools")
+    async def tool_definitions(request: Request):
+        """The canonical read-only tool definitions an agent may offer to the model."""
+        if authenticate(request) is None:
+            return unauthorized()
+        return {"tools": [toolmod.READ_ONLY_TOOLS[n].definition() for n in cfg.tools.enabled]}
+
+    @app.post("/v1/tools/{name}")
+    async def run_tool(name: str, request: Request):
+        """Execute one read-only tool for the authenticated user. Anything outside the code
+        allowlist (write, exec, web, ...) is refused here and logged."""
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        if toolmod.get_spec(name, cfg.tools.enabled) is None:
+            sec.write(uid, "tool_call_blocked", name, "not_in_readonly_allowlist")
+            return JSONResponse({"error": "tool_not_permitted"}, status_code=403)
+        try:
+            payload = await request.json()
+            args = payload.get("arguments", {}) if isinstance(payload, dict) else None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            args = None
+        ctx = toolmod.ToolContext(uid, Path(cfg.tools.files_root), cfg.tools.max_result_chars,
+                                  cfg.tools.max_file_bytes, rag)
+        try:
+            content = await toolmod.execute(name, args, ctx, cfg.tools.enabled)
+        except toolmod.ToolError as e:
+            return JSONResponse({"tool": name, "error": str(e)}, status_code=400)
+        # The taint shown here is advisory. The gateway assigns the real taint itself when the
+        # result comes back in a chat turn, and it never trusts a client-supplied value.
+        return {"tool": name, "content": content, "taint": "PRIVATE"}
 
     @app.get("/session")
     async def session_info(request: Request):
