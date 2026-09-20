@@ -1,6 +1,6 @@
 # Private AI Agent Template — Implementation Plan
 
-Progress: Phase 0 done, Phase 1 done (verified with a stand-in model server; real-model and outside port-scan checks pending on the GPU host). Phases 2 to 5 not started. Each phase stops at a review checkpoint.
+Progress: Phases 0, 1 and 2 built. Phase 1 and 2 were verified with stand-in servers; real-model, outside port-scan, host firewall and tcpdump checks are pending on the GPU host. Phases 3 to 5 not started. Each phase stops at a review checkpoint.
 
 ---
 

@@ -11,8 +11,11 @@ services:
       dockerfile: gateway/Dockerfile
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      GATEWAY_TOKEN_OWNER: ${GATEWAY_TOKEN_OWNER:?set GATEWAY_TOKEN_OWNER in infra/.env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./config.yaml:/app/infra/config.yaml:ro
+      - audit_log:/audit
     ports:
       # Loopback only. Remote access is via SSH tunnel or the host's Tailscale interface.
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
@@ -45,9 +48,15 @@ services:
     restart: unless-stopped
 
 networks:
-  edge: {}
+  edge:
+    # Fixed subnet so the host firewall rule in infra/egress-allowlist.sh can target it.
+    # Only the gateway is attached to this network.
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
   internal:
     internal: true
 
 volumes:
   ollama_models: {}
+  audit_log: {}
