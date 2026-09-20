@@ -1,44 +1,90 @@
-"""Config loader. Models and endpoints come from infra/config.yaml, never from code."""
+"""Config loader. Models, endpoints, users, sources and frontier policy come from
+infra/config.yaml, never from code."""
 from __future__ import annotations
 
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from .taint import parse_taint
 
 
-class GatewayCfg(BaseModel):
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class GatewayCfg(_Strict):
     host: str = "0.0.0.0"
     port: int = 8080
 
 
-class ModelServerCfg(BaseModel):
+class ModelServerCfg(_Strict):
     base_url: str
     health_url: str
     timeout_seconds: float = 300
 
 
-class ModelCfg(BaseModel):
+class ModelCfg(_Strict):
     id: str
     context: int = 0
 
 
-class ModelsCfg(BaseModel):
+class ModelsCfg(_Strict):
     default: str
     aliases: Dict[str, ModelCfg]
+    system_prompt: str = "You are a helpful assistant."
 
 
-class Settings(BaseModel):
+class UserCfg(_Strict):
+    id: str
+    token_env: str
+
+    @field_validator("id")
+    @classmethod
+    def _id_ok(cls, v: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", v):
+            raise ValueError("user id must match [A-Za-z0-9_.-]{1,64}")
+        return v
+
+
+class FrontierCfg(_Strict):
+    auto_route_clean: bool = False          # default MUST stay false
+    consent_scope: Literal["session", "request"] = "session"
+    base_url: str = "https://api.anthropic.com"
+    api_key_env: str = "ANTHROPIC_API_KEY"
+    model: str = "claude-sonnet-5"
+    max_tokens: int = 1024
+    timeout_seconds: float = 60
+    system_prompt: str = "You are a helpful assistant."
+
+
+class AuditCfg(_Strict):
+    path: str = "/audit/audit.jsonl"
+
+
+class Settings(_Strict):
     gateway: GatewayCfg = GatewayCfg()
     model_server: ModelServerCfg
     models: ModelsCfg
+    users: List[UserCfg]
+    sources: Dict[str, str] = {}
+    frontier: FrontierCfg = FrontierCfg()
+    audit: AuditCfg = AuditCfg()
 
-    def resolve_model(self, requested: str | None) -> str:
-        """Map an alias (or the empty value) to a concrete model id. Unknown ids pass through
-        only if they are a configured model id; anything else is rejected by the caller."""
+    @field_validator("sources")
+    @classmethod
+    def _sources_ok(cls, v: Dict[str, str]) -> Dict[str, str]:
+        for name, t in v.items():
+            parse_taint(t)          # raises on anything but CLEAN / PRIVATE
+        return v
+
+    def resolve_model(self, requested: Optional[str]) -> str:
+        """Map an alias (or empty) to a configured model id. Anything else raises KeyError."""
         name = requested or self.models.default
         if name in self.models.aliases:
             return self.models.aliases[name].id
