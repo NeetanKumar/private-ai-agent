@@ -150,7 +150,9 @@ PENDING = [
     ("Outside port scan shows nothing open", "`tests/test_portscan.sh` from another machine", "RUNBOOK 6.2"),
     ("Audit entries equal real outbound connections on the wire", "`tests/privacy/tcpdump_check.sh` on the host", "RUNBOOK 6.3"),
     ("Host firewall limits the gateway to the frontier API host", "`infra/egress-allowlist.sh`; verified by the capture above", "RUNBOOK 5"),
-    ("A real local model answers through the gateway", "`curl` through the gateway on the GPU host", "RUNBOOK 6.1"),
+    ("A real local model answers through the gateway", "Real 4B model on a Mac and real 9B model on a rented RTX 4090, through the gateway and the UI", "FINDINGS.md", "VERIFIED MANUALLY (2 sessions, not automated)"),
+    ("Docker can use the GPU on a rented host", "Install the container toolkit, then `docker run --gpus all ubuntu nvidia-smi`", "FINDINGS.md", "VERIFIED MANUALLY (1 session, not automated)"),
+    ("Model download on a fresh host (`make models`)", "Downloads through the isolated model server failed; fixed with a one-shot downloader and tested locally with the embedding model. Not yet re-run on a rented host.", "FINDINGS.md", "FIXED, RE-TEST ON HOST"),
     ("Killing the real Ollama container returns an error, not a frontier response", "Stop the container and send a request", "RUNBOOK 6.5"),
     ("Retrieval quality with the real embedding model, and `rag.min_score` calibration", "`tests/rag/report.py` floor sweep", "RUNBOOK 6.6"),
     ("Faithfulness and answer correctness on the golden set", "`tests/rag/report.py --live`", "RUNBOOK 6.6"),
@@ -236,7 +238,7 @@ Do not edit by hand. Run `make test` to regenerate it.
 Every automated check here ran against **stand-in servers**: small local programs that play the local
 model and the frontier API over real network sockets. That makes the privacy and permission logic
 testable, including connection counts, but it says nothing about how a real model behaves. The checks
-that need a real GPU host are listed after the table and are **not run**. They are not counted as passing.
+that need a real host are listed after the table. Each says whether it was done by hand or not run at all. Nothing in that second table is counted as an automated pass.
 
 ## Automated checks
 
@@ -244,12 +246,12 @@ that need a real GPU host are listed after the table and are **not run**. They a
 |---|---|---|---|
 {chr(10).join(table)}
 
-## Not run: needs a real GPU host
+## Needs a real host: manual checks
 
 | Check | Method | Where | Status |
 |---|---|---|---|
 | All 10 no-answer questions, including the 4 near-miss ones, return "not in documents" | Real model following the grounding instruction (`tests/rag/report.py --live`) | RUNBOOK 6.6 | PARTIAL: {gated} verified offline; requirement not yet met |
-""" + "\n".join(f"| {a} | {b} | {c} | NOT RUN |" for a, b, c in PENDING) + f"""
+""" + "\n".join(f"| {r[0]} | {r[1]} | {r[2]} | {r[3] if len(r) > 3 else 'NOT RUN'} |" for r in PENDING) + f"""
 
 ## Notes
 
