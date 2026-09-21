@@ -6,7 +6,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -39,6 +39,9 @@ class ModelsCfg(_Strict):
     default: str
     aliases: Dict[str, ModelCfg]
     system_prompt: str = "You are a helpful assistant."
+    # Extra fields added to every request sent to the local model server, for example
+    # {reasoning_effort: none} to stop a "thinking" model from reasoning at length. Empty by default.
+    extra_body: Dict[str, Any] = {}
 
 
 class UserCfg(_Strict):

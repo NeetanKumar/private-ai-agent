@@ -353,7 +353,8 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
     has_tool_history = any(f.role == "tool" for f in snapshot)
     extra = " ".join(x for x in (cfg.rag.system_prompt if inp.documents else None,
                                  cfg.tools.system_prompt if (tools_mode or has_tool_history) else None) if x) or None
-    body = {"model": model_id, "messages": build_local_messages(cfg, snapshot, extra), **inp.params}
+    body = {**cfg.models.extra_body, "model": model_id,
+            "messages": build_local_messages(cfg, snapshot, extra), **inp.params}
     if offered_defs:
         body["tools"] = offered_defs
         if inp.tool_choice in ("auto", "none", "required"):
