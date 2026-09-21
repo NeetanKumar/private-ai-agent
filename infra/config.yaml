@@ -20,8 +20,8 @@ models:
   # { reasoning_effort: none }. Leave empty otherwise.
   extra_body: {}
   aliases:
-    daily:     { id: "qwen3.5:9b",  context: 262144 }
-    on-demand: { id: "qwen3.6:27b", context: 262144 }
+    daily:     { id: "qwen3.5:4b", context: 262144 }   # TESTING ONLY: revert before real use (qwen3.5:9b)
+    on-demand: { id: "qwen3.5:4b", context: 262144 }   # TESTING ONLY: revert before real use (qwen3.6:27b)
 
 # Users. Adding a user is a config change: add an entry and set its token env var.
 users:
