@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private AI Agent</title>
+  <link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">Private AI Agent <span class="muted">Template</span></div>
+    <div class="head-right">
+      <span id="health" class="pill" title="Local model server">model server: …</span>
+      <span id="who" class="muted" hidden></span>
+      <button id="disconnect" class="link" hidden>Disconnect</button>
+    </div>
+  </header>
+
+  <section id="login" class="card narrow">
+    <h1>Connect</h1>
+    <p class="muted">Enter your bearer token (<code>GATEWAY_TOKEN_OWNER</code> in <code>infra/.env</code>). It is sent only to this server.</p>
+    <form id="login-form" autocomplete="off">
+      <label for="token">Token</label>
+      <input id="token" type="password" required autocomplete="off" spellcheck="false">
+      <label class="check"><input id="remember" type="checkbox"> Remember for this browser tab</label>
+      <button type="submit" class="primary">Connect</button>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="chat" role="tab">Chat</button>
+      <button class="tab" data-tab="tools" role="tab">Files &amp; tools</button>
+      <button class="tab" data-tab="logs" role="tab">Logs</button>
+    </nav>
+
+    <div class="layout">
+      <section id="tab-chat" class="panel">
+        <div id="messages" aria-live="polite"></div>
+
+        <div id="offer" class="offer" hidden>
+          <p><strong>Answered locally.</strong> Your context is clean, so this question could go to the frontier model (Claude) instead. Only the text of your message would be sent, with no history and no context.</p>
+          <button id="send-frontier" class="primary">Send this question to the frontier…</button>
+          <button id="dismiss-offer" class="link">Stay local</button>
+        </div>
+
+        <form id="composer">
+          <textarea id="input" rows="3" placeholder="Ask something. Enter to send, Shift+Enter for a new line." required></textarea>
+          <div class="options">
+            <label>Model
+              <select id="model"></select>
+            </label>
+            <label>Lane
+              <select id="lane">
+                <option value="auto">auto (follow the rules)</option>
+                <option value="private">force local</option>
+              </select>
+            </label>
+            <label class="check"><input id="docs" type="checkbox"> Ask my documents</label>
+            <label class="check" id="req-consent-wrap" hidden><input id="req-consent" type="checkbox"> Consent to the frontier for this message</label>
+            <button type="submit" id="send" class="primary">Send</button>
+          </div>
+        </form>
+
+        <details class="ctx">
+          <summary>Add private context to the next message</summary>
+          <p class="muted">Context is tagged by its source name. Any source not marked CLEAN in <code>infra/config.yaml</code> is PRIVATE, and that locks the session to the local model.</p>
+          <div class="row">
+            <input id="ctx-source" type="text" value="pasted_note" aria-label="Source name">
+            <button id="ctx-add" type="button">Add</button>
+          </div>
+          <textarea id="ctx-text" rows="3" placeholder="Paste text to use as context"></textarea>
+          <ul id="ctx-list" class="chips"></ul>
+        </details>
+      </section>
+
+      <aside id="sidebar" class="card">
+        <h2>Session</h2>
+        <div id="taint-badge" class="taint clean">CLEAN</div>
+        <p id="taint-note" class="muted"></p>
+        <dl>
+          <dt>Fragments</dt><dd id="s-frags">0</dd>
+          <dt>Auto-route clean</dt><dd id="s-auto">–</dd>
+          <dt>Consent scope</dt><dd id="s-scope">–</dd>
+          <dt>Consent</dt><dd id="s-consent">–</dd>
+        </dl>
+        <label class="check" id="consent-wrap"><input id="consent" type="checkbox"> Allow the frontier for this session</label>
+        <button id="new-session">New session (<code>/new</code>)</button>
+        <p class="muted small"><code>/new</code> is the only way to clear taint.</p>
+      </aside>
+
+      <section id="tab-tools" class="panel" hidden>
+        <p class="muted">These run directly as you against your own files folder and document store. Results are not added to the chat. Only the read-only tools exist.</p>
+        <div class="tool"><h3>list_files</h3><button data-tool="list_files">Run</button></div>
+        <div class="tool"><h3>read_file</h3><input id="t-read" placeholder="notes/plan.md" aria-label="path"><button data-tool="read_file">Run</button></div>
+        <div class="tool"><h3>search_files</h3><input id="t-search" placeholder="words to find" aria-label="query"><button data-tool="search_files">Run</button></div>
+        <div class="tool"><h3>context_query</h3><input id="t-ctxq" placeholder="search your ingested documents" aria-label="query"><button data-tool="context_query">Run</button></div>
+        <pre id="tool-out" class="out">(output appears here)</pre>
+      </section>
+
+      <section id="tab-logs" class="panel" hidden>
+        <div class="row"><button id="refresh-logs">Refresh</button><span class="muted">Your own records only. Hashes and counts, never prompt text.</span></div>
+        <h3>Egress audit (frontier calls)</h3>
+        <div class="scroll"><table id="audit-table"><thead><tr><th>Time</th><th>Lane</th><th>Consent</th><th>Tokens in/out</th><th>Status</th><th>Destination</th><th>Prompt hash</th></tr></thead><tbody></tbody></table></div>
+        <h3>Security events (blocked or cleaned)</h3>
+        <div class="scroll"><table id="sec-table"><thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Reason</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
