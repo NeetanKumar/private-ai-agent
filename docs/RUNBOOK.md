@@ -53,7 +53,7 @@ git clone <this repository> private-ai && cd private-ai
 make init                      # creates infra/.env (mode 600) with a random token for user "owner"
 nano infra/.env                # optional: ANTHROPIC_API_KEY for the frontier lane
 make up                        # builds and starts the gateway and the Ollama container
-make models                    # pulls the models listed in infra/config.yaml
+make models                    # pulls the chat models and the embedding model listed in infra/config.yaml
 ```
 
 Leave `ANTHROPIC_API_KEY` empty to keep the frontier lane disabled. Requests that would use it then
