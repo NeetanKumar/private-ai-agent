@@ -65,6 +65,35 @@ curl -s localhost:8080/v1/chat/completions \
   -d '{"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
+## Run locally on a Mac
+
+For a demo or development with no server. Ollama runs natively on the Mac, so it uses the Apple chip
+and Docker's memory limit does not matter. Needs Docker (Colima or Docker Desktop) and Homebrew.
+
+1. Install the Ollama app: `brew install --cask ollama`. The plain `brew install ollama` formula
+   needs a full Xcode and fails without it.
+2. Start it listening on all interfaces, in its own terminal:
+   `OLLAMA_HOST=0.0.0.0:11434 ollama serve`.
+   With Colima, Docker cannot reach an Ollama bound only to `127.0.0.1`. This makes Ollama reachable
+   from your network, so use a trusted network and stop it when done (`pkill ollama`).
+3. Pull the models named in `infra/config.yaml`: `make models-mac`.
+4. Start the gateway: `make up-mac`.
+5. Open `http://localhost:8080/ui`. Copy the token with
+   `grep GATEWAY_TOKEN_OWNER infra/.env | cut -d= -f2 | pbcopy`.
+
+Things to know:
+
+- **After changing code, config or the UI, run `make up-mac` again.** It rebuilds and restarts the
+  gateway. The UI files are baked into the image, so a reload alone shows the old page. Restarting
+  clears every session, because sessions live in memory.
+- The first reply after a start is slow while the model loads. Send a throwaway message first.
+- Small "thinking" models can use up Ollama's default window of about 4,096 tokens while reasoning
+  and return an empty reply. Either set `models.extra_body: { reasoning_effort: none }` in
+  `infra/config.yaml`, or start Ollama with `OLLAMA_CONTEXT_LENGTH=16384`.
+- The host-level outbound restriction is not enforced on a Mac, because Ollama runs outside Docker.
+  Use fake data for demos.
+- Stop with `make down` and `pkill ollama`.
+
 ## Test UI
 
 The gateway serves a small browser UI at `/ui`. Open `http://localhost:8080/ui` (through your SSH
