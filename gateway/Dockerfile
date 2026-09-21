@@ -4,6 +4,7 @@ COPY gateway/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY gateway /app/gateway
 COPY rag /app/rag
+COPY scripts/model_ids.py /app/scripts/model_ids.py
 ENV GATEWAY_CONFIG=/app/infra/config.yaml PYTHONPATH=/app
 RUN useradd -r -u 10001 gw && mkdir /audit /data /data/rag && chown gw /audit /data/rag
 USER gw

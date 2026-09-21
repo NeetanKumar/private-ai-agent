@@ -24,11 +24,14 @@ down:          ## stop everything (data volumes are kept)
 logs:          ## follow container logs (they never contain prompt bodies)
 	$(COMPOSE) --profile gpu logs -f --tail=100
 
-models:        ## pull every model listed in infra/config.yaml into the Ollama container
-	@for m in $$($(PY) scripts/model_ids.py); do $(COMPOSE) --profile gpu exec ollama ollama pull $$m; done
+# The model list is read inside the gateway image, which always has PyYAML (the host may not).
+MODEL_IDS = $(COMPOSE) run --rm --no-deps -T gateway python /app/scripts/model_ids.py /app/infra/config.yaml 2>/dev/null
 
-models-mac:    ## pull the models into a native Ollama on this machine
-	@for m in $$($(PY) scripts/model_ids.py); do ollama pull $$m; done
+models: init   ## pull the chat models and the embedding model named in infra/config.yaml into the Ollama container
+	@for m in $$($(MODEL_IDS)); do $(COMPOSE) --profile gpu exec ollama ollama pull $$m || exit 1; done
+
+models-mac: init ## pull the same models into a native Ollama on this machine
+	@for m in $$($(MODEL_IDS)); do ollama pull $$m || exit 1; done
 
 pull-models: models
 pull-models-mac: models-mac
