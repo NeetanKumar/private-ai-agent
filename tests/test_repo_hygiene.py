@@ -167,3 +167,21 @@ def test_make_targets_cover_all_three_ways_to_start():
     for target in ("up-cpu:", "models-cpu:", "up-mac:", "up:"):
         assert re.search(rf"^{target}", mk, re.M), target
     assert "PROFILES = --profile gpu --profile cpu" in mk and "$(COMPOSE) $(PROFILES) down" in mk
+
+
+def test_model_downloader_is_a_one_shot_that_does_not_open_up_the_runtime_stack():
+    """Regression: `make models` once failed because the model server has no route to the internet.
+    Downloads now happen in a separate one-shot container. It must not weaken the running stack."""
+    c = compose()
+    svc, nets = c["services"], c["networks"]
+    pull = svc["ollama-pull"]
+    assert pull["profiles"] == ["pull"] and pull["restart"] == "no" and "ports" not in pull
+    assert pull["networks"] == ["pull"] and not nets["pull"].get("internal")
+    assert "ipam" not in nets["pull"]                      # not the fixed subnet the host firewall rule targets
+    assert pull["volumes"] == svc["ollama"]["volumes"]     # writes into the same model volume
+    for name in ("ollama", "ollama-cpu", "gateway"):        # nothing long-running is attached to it
+        ns = svc[name]["networks"]
+        assert "pull" not in (ns if isinstance(ns, list) else list(ns))
+    mk = (ROOT / "Makefile").read_text()
+    assert "--profile pull run --rm ollama-pull" in mk
+    assert "exec ollama ollama pull" not in mk and "exec ollama-cpu ollama pull" not in mk
