@@ -102,8 +102,15 @@
   function badge(cls, text) { return el("span", "badge " + cls, text); }
 
   function addAssistant(d) {
-    var text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || "";
-    var m = addMsg("assistant", text || "(no text)");
+    var choice = (d.choices && d.choices[0]) || {};
+    var text = (choice.message && choice.message.content) || "";
+    var hasTools = choice.message && choice.message.tool_calls && choice.message.tool_calls.length;
+    var empty = text ? "" : (hasTools ? "" :
+      choice.finish_reason === "length"
+        ? "The model ran out of tokens before it finished its answer. Small reasoning models can use them all while thinking. Try again, start a new session, or turn reasoning off."
+        : "The model returned no text.");
+    var m = addMsg("assistant", text || empty);
+    if (empty) m.classList.add("empty");
     var meta = el("div", "meta");
     meta.appendChild(badge("lane-" + d.lane, "lane: " + (d.lane === "private" ? "local" : d.lane)));
     meta.appendChild(badge("t-" + d.taint, "taint: " + d.taint));
