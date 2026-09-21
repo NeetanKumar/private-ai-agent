@@ -1,0 +1,26 @@
+// Request-scope scenario: consent is per message and never persists.
+import { start } from "./cdp_lib.mjs";
+const [appPort, debugPort, shots] = process.argv.slice(2);
+const { send, ev, until, shot, check, problems, finish } = await start(debugPort, shots);
+await send("Page.navigate", { url: `http://127.0.0.1:${appPort}/ui` });
+await until("document.readyState === 'complete' && !!document.getElementById('login')", "load");
+await ev("document.getElementById('token').value='owner-token-123'; document.getElementById('login-form').requestSubmit(); 1");
+await until("!document.getElementById('app').hidden", "app");
+await until("document.getElementById('s-scope').textContent === 'request'", "session info loaded");
+check("request scope: per-message consent checkbox visible", (await ev("document.getElementById('req-consent-wrap').offsetParent")) !== null);
+check("request scope: session consent checkbox hidden", (await ev("document.getElementById('consent-wrap').offsetParent")) === null);
+check("request scope: sidebar says per message", (await ev("document.getElementById('s-consent').textContent")) === "per message");
+const say = async (text) => { await ev(`document.getElementById('input').value=${JSON.stringify(text)}; document.getElementById('composer').requestSubmit(); 1`); await until("!document.getElementById('send').disabled", "reply"); };
+const lastLane = () => ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().querySelector('.badge[class*=lane-]').textContent");
+await say("first question");
+check("first question stays local", (await lastLane()) === "lane: local");
+await ev("window.confirm = () => true; document.getElementById('send-frontier').click(); 1");
+await until("document.querySelectorAll('.msg.assistant').length >= 2 && !document.getElementById('send').disabled", "frontier");
+check("consent for one message reaches the frontier", (await lastLane()) === "lane: frontier");
+await say("second question");
+check("consent did NOT persist: next question is local again", (await lastLane()) === "lane: local");
+await ev("document.getElementById('req-consent').checked = true; 1");
+await say("third question with the checkbox ticked");
+check("ticking the checkbox sends that message to the frontier", (await lastLane()) === "lane: frontier");
+check("no CSP violations, script exceptions or console errors", problems.length === 0, problems.join("; "));
+finish("REQUEST-SCOPE UI");

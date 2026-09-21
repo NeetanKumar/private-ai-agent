@@ -1,0 +1,110 @@
+// Session-scope scenario: login, chat, consent, taint lock, new session, tools, logs, mobile layout.
+import { start } from "./cdp_lib.mjs";
+const [appPort, debugPort, shots] = process.argv.slice(2);
+const { send, ev, until, shot, check, problems, finish } = await start(debugPort, shots);
+const BASE = `http://127.0.0.1:${appPort}`;
+await send("Page.navigate", { url: BASE + "/" });
+await until("document.readyState === 'complete' && !!document.getElementById('login')", "page load");
+check("root redirects to /ui", (await ev("location.pathname")) === "/ui");
+await until("document.getElementById('health').textContent.includes('up')", "health pill");
+await shot("1-login");
+
+// wrong token
+await ev("document.getElementById('token').value='nope'; document.getElementById('login-form').requestSubmit(); 1");
+await until("!document.getElementById('login-error').hidden", "login error");
+check("wrong token is rejected", (await ev("document.getElementById('login-error').textContent")).includes("not accepted"));
+
+// right token
+await ev("document.getElementById('token').value='owner-token-123'; document.getElementById('login-form').requestSubmit(); 1");
+await until("!document.getElementById('app').hidden", "app visible");
+check("connects with the right token", await ev("document.getElementById('who').textContent") === "user: owner");
+check("models listed", (await ev("Array.from(document.getElementById('model').options).map(o=>o.value).join(',')")) === "daily,on-demand");
+check("per-message consent checkbox is NOT visible in session scope", (await ev("document.getElementById('req-consent-wrap').offsetParent")) === null);
+check("session consent checkbox is visible in session scope", (await ev("document.getElementById('consent-wrap').offsetParent")) !== null);
+check("session starts CLEAN", (await ev("document.getElementById('taint-badge').textContent")) === "CLEAN");
+
+// clean question, local answer, frontier offered
+const say = async (text) => { await ev(`document.getElementById('input').value=${JSON.stringify(text)}; document.getElementById('composer').requestSubmit(); 1`); await until("!document.getElementById('send').disabled", "reply"); };
+await say("What is 2+2?");
+check("answer shows lane local", (await ev("document.querySelector('.msg.assistant .badge.lane-private')?.textContent")) === "lane: local");
+check("answer shows taint CLEAN", (await ev("document.querySelector('.msg.assistant .badge.t-CLEAN')?.textContent")) === "taint: CLEAN");
+check("frontier offer is shown", await ev("!document.getElementById('offer').hidden"));
+const shown = await ev("document.querySelector('.msg.assistant').firstChild.textContent");
+check("reply rendered as text, image markup stripped by the gateway", shown.includes("[image removed]") && !shown.includes("evil.example"), JSON.stringify(shown.slice(0, 90)));
+check("no <img> element exists in the page", (await ev("document.querySelectorAll('img').length")) === 0);
+await shot("2-local-answer-with-offer");
+
+// consent and send to the frontier
+await ev("window.confirm = () => true; document.getElementById('send-frontier').click(); 1");
+await until("document.querySelectorAll('.msg.assistant').length >= 2 && !document.getElementById('send').disabled", "frontier reply");
+const last = await ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().firstChild.textContent");
+check("frontier answer arrives after consent", last === "frontier answer", last);
+check("frontier answer is labelled FRONTIER", (await ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().querySelector('.badge.lane-frontier')?.textContent")) === "lane: frontier");
+check("sidebar shows consent given", (await ev("document.getElementById('s-consent').textContent")) === "given");
+await shot("3-frontier-answer");
+
+// private context locks the session
+await ev("document.querySelector('.ctx').open = true; document.getElementById('ctx-text').value='salary bands: L5 = 250k'; document.getElementById('ctx-add').click(); 1");
+check("context chip added", (await ev("document.querySelectorAll('#ctx-list li').length")) === 1);
+await say("Summarise the note");
+check("private context gives taint PRIVATE", (await ev("document.getElementById('taint-badge').textContent")) === "PRIVATE");
+check("no frontier offer when PRIVATE", await ev("document.getElementById('offer').hidden"));
+check("sidebar says consent has no effect while PRIVATE", (await ev("document.getElementById('s-consent').textContent")).includes("no effect"));
+check("assistant badge says PRIVATE", (await ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().querySelector('.badge.t-PRIVATE')?.textContent")) === "taint: PRIVATE");
+await say("innocent follow up");
+check("follow-up stays local (history taint)", (await ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().querySelector('.badge.lane-private')?.textContent")) === "lane: local");
+await shot("4-private-locked");
+
+// new session
+await ev("document.getElementById('new-session').click(); 1");
+await until("document.getElementById('taint-badge').textContent === 'CLEAN' && document.querySelectorAll('.msg.assistant').length === 0", "new session");
+check("New session clears taint and the transcript", true);
+check("consent cleared by new session", (await ev("document.getElementById('s-consent').textContent")) === "not given");
+
+// docs mode with nothing ingested
+await ev("document.getElementById('docs').checked = true; 1");
+await say("What does my document say?");
+check("no documents ingested gives 'not in documents'", (await ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().firstChild.textContent")) === "not in documents");
+await ev("document.getElementById('docs').checked = false; document.getElementById('new-session').click(); 1");
+
+// tools tab
+await ev("document.querySelector('[data-tab=tools]').click(); 1");
+await ev("document.querySelector('[data-tool=list_files]').click(); 1");
+await until("document.getElementById('tool-out').textContent.includes('plan.md')", "list_files output");
+await ev("document.getElementById('t-read').value='plan.md'; document.querySelector('[data-tool=read_file]').click(); 1");
+await until("document.getElementById('tool-out').textContent.includes('October 21')", "read_file output");
+await ev("document.getElementById('t-read').value='../../etc/passwd'; document.querySelector('[data-tool=read_file]').click(); 1");
+await until("document.getElementById('tool-out').textContent.startsWith('error')", "traversal refused");
+check("tools tab reads own file and refuses traversal", true, await ev("document.getElementById('tool-out').textContent"));
+await shot("5-tools");
+
+// logs tab
+await ev("document.querySelector('[data-tab=logs]').click(); 1");
+await until("document.querySelectorAll('#audit-table tbody tr').length > 0 && !document.querySelector('#audit-table td.empty')", "audit rows");
+const row = await ev("Array.from(document.querySelectorAll('#audit-table tbody tr td')).map(t=>t.textContent).join(' | ')");
+check("audit tab shows the one frontier call", (await ev("document.querySelectorAll('#audit-table tbody tr').length")) === 1 && row.includes("frontier") && row.includes("session"), row);
+check("audit tab shows hash, not text", row.includes("…") && !row.includes("2+2"));
+await shot("6-logs");
+
+// disconnect
+await ev("document.getElementById('disconnect').click(); 1");
+check("disconnect returns to login", await ev("!document.getElementById('login').hidden && document.getElementById('app').hidden"));
+
+// mobile layout
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
+await ev("document.getElementById('token').value='owner-token-123'; document.getElementById('login-form').requestSubmit(); 1");
+await until("!document.getElementById('app').hidden", "app visible (mobile)");
+await shot("7-mobile");
+
+// mobile layout: nothing may overflow the page, and the status pill must stay a pill
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
+await ev("document.getElementById('token').value='owner-token-123'; document.getElementById('login-form').requestSubmit(); 1");
+await until("!document.getElementById('app').hidden", "app visible (mobile)");
+check("disconnect resets to the Chat tab", await ev("document.querySelector('.tab.active').dataset.tab === 'chat'"));
+await ev("document.querySelector('[data-tab=logs]').click(); 1");
+await until("document.querySelectorAll('#audit-table tbody tr').length > 0", "logs (mobile)");
+check("mobile: page does not scroll sideways", await ev("document.documentElement.scrollWidth <= window.innerWidth + 1"));
+check("mobile: status pill is one line", (await ev("document.getElementById('health').offsetHeight")) < 40);
+await shot("7-mobile");
+check("no CSP violations, script exceptions or console errors", problems.length === 0, problems.join("; "));
+finish("SESSION-SCOPE UI");
