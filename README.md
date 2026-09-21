@@ -61,6 +61,17 @@ curl -s localhost:8080/v1/chat/completions \
   -d '{"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
+## Test UI
+
+The gateway serves a small browser UI at `/ui`. Open `http://localhost:8080/ui` (through your SSH
+tunnel if the gateway is remote), paste your token, and chat. It shows, on every reply, which lane
+answered and the taint, plus the session state, the consent controls, a frontier offer with a
+confirmation step, your own files and document tools, and your own audit and security records.
+
+It is served with a strict content policy: no outside requests, no images, and every reply is shown
+as plain text. Set `ui.enabled: false` in `infra/config.yaml` to serve no UI. It does not ingest
+documents; use `make ingest` for that.
+
 ## Using it
 
 | Want to | Do this |

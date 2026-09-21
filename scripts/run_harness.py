@@ -128,6 +128,16 @@ ROWS = [
     ("Agent tool bridge and agent configuration", "Bridge run against a live gateway over stdio; config checks",
      ["test_agent_bridge"]),
 
+    ("Built-in test UI (`/ui`)", None, None),
+    ("UI is served with a strict content policy and only its own two assets", "Header checks, path-traversal probes, config switch",
+     ["test_ui_is_served_with_a_strict_content_security_policy", "test_static_assets_are_served_and_nothing_else", "test_ui_can_be_switched_off_by_config"]),
+    ("UI makes no outside requests and never renders server text as HTML", "Static scan of the page, script and stylesheet; script parses; every element id it uses exists",
+     ["test_ui_source_makes_no_outside_requests", "test_ui_javascript_parses", "test_ui_ids_used_by_the_script_exist", "test_hidden_attribute_always_wins"]),
+    ("Audit and security-log endpoints return only the caller's own records, with no prompt text", "Two users; limit and ordering; auth required",
+     ["test_audit_endpoint_returns_only_the_callers_records", "test_audit_endpoint_orders_newest_first", "test_security_endpoint_returns_only_the_callers_events", "test_log_endpoints_require_auth"]),
+    ("UI works in a real browser: login, chat, consent (both scopes), taint lock, /new, tools, logs, mobile layout", "Headless Chrome drives the real page against the real gateway with stand-in models; also fails on any content-policy violation",
+     ["test_ui_session_scope_end_to_end", "test_ui_request_scope_end_to_end"]),
+
     ("Phase 5: packaging and hygiene", None, None),
     ("Secrets are never tracked; env example holds no values", "Scan tracked files", ["test_no_env_file_is_tracked", "test_env_example_holds_no_secret_values", "test_no_secret_shaped_strings"]),
     ("README and docs carry no personal references", "Scan for emails, home paths and account URLs; optional name scrub", ["test_docs_and_readme_carry_no", "test_readme_names_the_project", "test_no_tracked_file_contains_an_email"]),
@@ -184,6 +194,7 @@ def main() -> int:
         used.update(i for i, _ in matched)
         n_pass = sum(s == "pass" for _, s in matched)
         n_fail = sum(s == "fail" for _, s in matched)
+        skipped_only = bool(matched) and n_pass == 0 and n_fail == 0 and n_skip > 0
         ok = bool(matched) and n_fail == 0 and n_pass > 0
         n_skip = sum(s == "skip" for _, s in matched)
         result = (f"{n_pass}/{len(matched)} tests passed" + (f", {n_skip} skipped" if n_skip else "")) if matched else "no matching tests"
@@ -193,8 +204,9 @@ def main() -> int:
             result += f"; floor gate closed on {gated} of all 10 (see note 2); false abstentions {falsea}"
         if name.startswith("20-task"):
             result += "; stand-in scored 20/20 (proves the harness only)"
-        failures += not ok
-        table.append(f"| {name} | {method} | {result} | {'PASS' if ok else 'FAIL'} |")
+        failures += not (ok or skipped_only)
+        status = "PASS" if ok else ("SKIPPED (tool missing on this machine, not counted as passing)" if skipped_only else "FAIL")
+        table.append(f"| {name} | {method} | {result} | {status} |")
     other = [(i, s) for i, s in cases if i not in used]
     o_pass, o_fail = sum(s == "pass" for _, s in other), sum(s == "fail" for _, s in other)
     failures += o_fail

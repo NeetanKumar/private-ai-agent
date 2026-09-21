@@ -81,7 +81,9 @@ If the host name cannot be resolved the script refuses to change the rules.
 
 ## 6. Verify before you put real data on it
 
-**6.1 The gateway answers** (over an SSH tunnel from your laptop):
+**6.1 The gateway answers.** Easiest is the built-in UI: open an SSH tunnel and browse to `http://localhost:8080/ui`. The commands below do the same from a terminal.
+
+Over an SSH tunnel from your laptop:
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 <host>          # leave running
@@ -134,7 +136,7 @@ in `docs/TEST_RESULTS.md`.
 
 | Task | How |
 |---|---|
-| Ask a question | `POST /v1/chat/completions` with your bearer token. |
+| Ask a question | The UI at `/ui`, or `POST /v1/chat/completions` with your bearer token. |
 | Clear a session and its taint | Send exactly `/new`, or `POST /session/new`. It is the only way. |
 | Allow the frontier for a session | `POST /session/consent {"consent": true}`. Cleared by `/new`. |
 | Switch to per-request consent | Set `frontier.consent_scope: request` in `infra/config.yaml`, then `make up`. |
@@ -145,6 +147,7 @@ in `docs/TEST_RESULTS.md`.
 | List documents | `make docs-list USER_ID=...` |
 | Mark a source CLEAN | Add it under `sources:` in `infra/config.yaml`. Only do this for data that is genuinely fine to send out. Anything not listed is PRIVATE. |
 | Swap a model | Change the id under `models.aliases` in `infra/config.yaml`, run `make models`, then `make up`. If the new model uses a different tool-call format, re-run the tool-use score. |
+| See your own audit and security records | The Logs tab in the UI, or `GET /v1/audit` and `GET /v1/security`. |
 | Read the egress audit log | `docker compose -f infra/docker-compose.yml --env-file infra/.env exec gateway cat /audit/audit.jsonl` |
 | Read the security log | Same, with `/audit/security.jsonl`. It lists blocked tool calls by name and reason. |
 | Stop | `make down`. Data volumes are kept. |
