@@ -61,6 +61,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 14px 20px 40px; }
 .msg { max-width: 88%; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; word-wrap: break-word; }
 .msg.user { align-self: flex-end; background: var(--user-bg); }
 .msg.assistant { align-self: flex-start; background: var(--bot-bg); }
+.msg.empty { color: var(--muted); font-style: italic; }
 .msg.note { align-self: center; background: none; color: var(--muted); font-size: 13px; text-align: center; }
 .msg.error { align-self: flex-start; background: var(--priv-bg); color: var(--priv); }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; white-space: normal; }
