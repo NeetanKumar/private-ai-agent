@@ -31,11 +31,10 @@ logs:          ## follow container logs (they never contain prompt bodies)
 # The model list is read inside the gateway image, which always has PyYAML (the host may not).
 MODEL_IDS = $(COMPOSE) run --rm --no-deps -T gateway python /app/scripts/model_ids.py /app/infra/config.yaml 2>/dev/null
 
-models: init   ## pull the chat models and the embedding model named in infra/config.yaml into the Ollama container
-	@for m in $$($(MODEL_IDS)); do $(COMPOSE) --profile gpu exec ollama ollama pull $$m || exit 1; done
+models: init   ## download the models named in infra/config.yaml (one-shot container; works for GPU and CPU starts)
+	@MODELS="$$($(MODEL_IDS) | tr '\n' ' ')" $(COMPOSE) --profile pull run --rm ollama-pull
 
-models-cpu: init ## pull the same models into the CPU-only Ollama container
-	@for m in $$($(MODEL_IDS)); do $(COMPOSE) --profile cpu exec ollama-cpu ollama pull $$m || exit 1; done
+models-cpu: models   ## same as `make models`
 
 models-mac: init ## pull the same models into a native Ollama on this machine
 	@for m in $$($(MODEL_IDS)); do ollama pull $$m || exit 1; done

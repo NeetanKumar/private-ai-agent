@@ -32,6 +32,26 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
 
+  # One-shot model downloader: `make models`. The running model servers have no route to the internet
+  # by design, so downloads happen here, in a container that exists only while it pulls. It shares the
+  # model volume, is on its own network (NOT `edge`, so the host egress allowlist does not apply to
+  # it, and NOT `internal`), publishes no port, and is removed when done.
+  ollama-pull:
+    profiles: [pull]
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve >/dev/null 2>&1 &
+        for i in $$(seq 1 60); do ollama list >/dev/null 2>&1 && break; sleep 1; done
+        for m in $${MODELS:?MODELS is empty}; do ollama pull "$$m" || exit 1; done
+    environment:
+      MODELS: ${MODELS:-}
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [pull]
+    restart: "no"
+
   # Same model server without a GPU. Reachable by the gateway under the same name ("ollama"), same
   # volume, same internal-only network, no published port. Use `--profile cpu` instead of `gpu`.
   ollama-cpu:
@@ -70,6 +90,7 @@ services:
     restart: unless-stopped
 
 networks:
+  pull: {}          # plain bridge with internet access, used only by the one-shot model downloader
   edge:
     # Fixed subnet so the host firewall rule in infra/egress-allowlist.sh can target it.
     # Only the gateway is attached to this network.
