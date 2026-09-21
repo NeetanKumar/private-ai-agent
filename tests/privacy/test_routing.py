@@ -231,3 +231,14 @@ def test_frontier_stream_is_delivered_as_sse_with_lane(make_rig):
                            json=user_body("hi", stream=True)) as r:
         text = "".join(r.iter_text())
     assert r.headers["X-Lane"] == "frontier" and '"lane": "frontier"' in text and "[DONE]" in text
+
+
+def test_extra_body_from_config_reaches_the_local_model_but_cannot_override_model_or_messages(make_rig):
+    rig = make_rig()
+    rig.client.app.state.cfg.models.extra_body = {"reasoning_effort": "none", "model": "evil", "messages": []}
+    d = rig.chat("hello").json()
+    sent = rig.local.last_request()
+    assert sent["reasoning_effort"] == "none"
+    assert sent["model"] == rig.client.app.state.cfg.models.aliases["daily"].id     # extra_body cannot swap the model
+    assert sent["messages"] and sent["messages"][-1]["content"] == "hello"
+    assert d["lane"] == "private"

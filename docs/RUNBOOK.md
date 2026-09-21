@@ -23,6 +23,17 @@ and the host firewall limits it to the frontier API host.
 - Ubuntu 22.04 or 24.04 with the NVIDIA driver installed. Check with `nvidia-smi`.
 - Prices and offerings change. Check them when you buy.
 
+### No GPU, or a demo with one user
+
+A GPU is not required for the gateway, the routing rules, the UI or the logs. For a demo with one
+user and no concurrent requests, a plain server works:
+
+- Choose a server with at least 8 GB of memory (16 GB is comfortable) and 4 or more CPU cores.
+- Use `make up-cpu` instead of `make up`, and `make models-cpu` instead of `make models`.
+- Expect a few words per second with a 4B model. If a "thinking" model takes very long to answer,
+  set `models.extra_body: { reasoning_effort: none }` in `infra/config.yaml`, then `make up-cpu`.
+- Everything else in this runbook is the same.
+
 ## 3. Harden the host **[host]**
 
 ```bash
@@ -150,7 +161,7 @@ in `docs/TEST_RESULTS.md`.
 | See your own audit and security records | The Logs tab in the UI, or `GET /v1/audit` and `GET /v1/security`. |
 | Read the egress audit log | `docker compose -f infra/docker-compose.yml --env-file infra/.env exec gateway cat /audit/audit.jsonl` |
 | Read the security log | Same, with `/audit/security.jsonl`. It lists blocked tool calls by name and reason. |
-| Stop | `make down`. Data volumes are kept. |
+| Stop | `make down`. Data volumes are kept. Works for both the GPU and CPU start. |
 
 Config changes take effect when the gateway restarts. `make up` recreates the container.
 

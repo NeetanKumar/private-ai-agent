@@ -47,7 +47,11 @@ make up          # GPU host: gateway + Ollama container
 make models      # pull the models named in infra/config.yaml (first time only)
 ```
 
-On a laptop without an NVIDIA GPU, run Ollama natively and use `make up-mac` and `make models-mac`.
+No GPU? Two options:
+
+- **Any ordinary server:** `make up-cpu` then `make models-cpu`. Ollama runs in a container on the CPU.
+  It is slow (a few words per second with a small model) but fine for a demo with one user.
+- **A laptop:** run Ollama natively, then `make up-mac` and `make models-mac`.
 
 The gateway is published on `127.0.0.1:8080` only. Reach a remote host with an SSH tunnel or over
 Tailscale. `docs/RUNBOOK.md` covers a full rented-GPU deployment, the outbound firewall, and how to

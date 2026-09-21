@@ -150,3 +150,20 @@ def test_required_docs_and_make_targets_exist():
     mk = (ROOT / "Makefile").read_text()
     for target in ("up:", "down:", "test:"):
         assert re.search(rf"^{target}", mk, re.M), target
+
+
+def test_cpu_profile_model_server_is_as_locked_down_as_the_gpu_one():
+    svc = compose()["services"]
+    cpu = svc["ollama-cpu"]
+    assert cpu["profiles"] == ["cpu"] and "ports" not in cpu
+    assert list(cpu["networks"]) == ["internal"] and cpu["networks"]["internal"]["aliases"] == ["ollama"]
+    assert "deploy" not in cpu                                  # no GPU reservation: it must start on any server
+    assert cpu["volumes"] == svc["ollama"]["volumes"]           # same model volume
+    assert "ollama" not in svc["gateway"].get("depends_on", {})  # nothing pins the gateway to one profile
+
+
+def test_make_targets_cover_all_three_ways_to_start():
+    mk = (ROOT / "Makefile").read_text()
+    for target in ("up-cpu:", "models-cpu:", "up-mac:", "up:"):
+        assert re.search(rf"^{target}", mk, re.M), target
+    assert "PROFILES = --profile gpu --profile cpu" in mk and "$(COMPOSE) $(PROFILES) down" in mk
