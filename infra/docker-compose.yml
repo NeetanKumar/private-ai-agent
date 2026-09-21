@@ -1,6 +1,7 @@
 # Private AI Agent Template
 # Profiles:
 #   gpu      -> runs Ollama in a container with NVIDIA GPU passthrough (rented GPU host)
+#   cpu      -> runs Ollama in a container with no GPU (any ordinary server; slow, fine for a demo)
 #   mac-dev  -> no Ollama container; gateway talks to Ollama running natively on the host
 name: private-ai
 
@@ -30,6 +31,23 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+
+  # Same model server without a GPU. Reachable by the gateway under the same name ("ollama"), same
+  # volume, same internal-only network, no published port. Use `--profile cpu` instead of `gpu`.
+  ollama-cpu:
+    profiles: [cpu]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      internal:
+        aliases: [ollama]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
 
   ollama:
     profiles: [gpu]

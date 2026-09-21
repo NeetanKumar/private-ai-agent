@@ -4,7 +4,8 @@ PY     ?= python3
 VENV    = .venv
 
 .DEFAULT_GOAL := help
-.PHONY: help init up up-mac down logs models models-mac pull-models pull-models-mac venv test scrub ingest docs-list
+PROFILES = --profile gpu --profile cpu
+.PHONY: help init up up-cpu up-mac down logs models models-cpu models-mac pull-models pull-models-mac venv test scrub ingest docs-list
 
 help:          ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -15,20 +16,26 @@ init:          ## create infra/.env with a generated gateway token (never overwr
 up: init       ## GPU host: gateway + Ollama container (then run `make models` once)
 	$(COMPOSE) --profile gpu up -d --build
 
+up-cpu: init   ## any server without a GPU: gateway + CPU-only Ollama container (then `make models-cpu`)
+	$(COMPOSE) --profile cpu up -d --build
+
 up-mac: init   ## laptop: gateway only; Ollama runs natively on the host
 	OLLAMA_BASE_URL=$${OLLAMA_BASE_URL:-http://host.docker.internal:11434} $(COMPOSE) up -d --build
 
 down:          ## stop everything (data volumes are kept)
-	$(COMPOSE) --profile gpu down
+	$(COMPOSE) $(PROFILES) down
 
 logs:          ## follow container logs (they never contain prompt bodies)
-	$(COMPOSE) --profile gpu logs -f --tail=100
+	$(COMPOSE) $(PROFILES) logs -f --tail=100
 
 # The model list is read inside the gateway image, which always has PyYAML (the host may not).
 MODEL_IDS = $(COMPOSE) run --rm --no-deps -T gateway python /app/scripts/model_ids.py /app/infra/config.yaml 2>/dev/null
 
 models: init   ## pull the chat models and the embedding model named in infra/config.yaml into the Ollama container
 	@for m in $$($(MODEL_IDS)); do $(COMPOSE) --profile gpu exec ollama ollama pull $$m || exit 1; done
+
+models-cpu: init ## pull the same models into the CPU-only Ollama container
+	@for m in $$($(MODEL_IDS)); do $(COMPOSE) --profile cpu exec ollama-cpu ollama pull $$m || exit 1; done
 
 models-mac: init ## pull the same models into a native Ollama on this machine
 	@for m in $$($(MODEL_IDS)); do ollama pull $$m || exit 1; done
