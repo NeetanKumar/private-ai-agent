@@ -68,3 +68,6 @@ tools:
 security:
   path: /audit/security.jsonl
   sanitize_output: true
+
+ui:
+  enabled: true                 # built-in test UI at /ui (same origin, no outside assets). false = no UI.

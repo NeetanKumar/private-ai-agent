@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from .audit import AuditLog
 from .config import Settings, get_settings
@@ -124,6 +124,49 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # The taint shown here is advisory. The gateway assigns the real taint itself when the
         # result comes back in a chat turn, and it never trusts a client-supplied value.
         return {"tool": name, "content": content, "taint": "PRIVATE"}
+
+    @app.get("/v1/audit")
+    async def my_audit(request: Request, limit: int = 50):
+        """The caller's own egress records (hashes and counts only), newest first."""
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        return {"records": audit.records_for(uid, max(1, min(limit, 200)))}
+
+    @app.get("/v1/security")
+    async def my_security_events(request: Request, limit: int = 50):
+        """The caller's own blocked-action events (tool name and reason only), newest first."""
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        return {"events": sec.events(uid, max(1, min(limit, 200)))}
+
+    # ---- built-in test UI: static files, same origin, no outside assets ----
+    ui_dir = Path(__file__).parent / "ui"
+    ui_files = {"app.js": "text/javascript", "style.css": "text/css"}
+    ui_headers = {
+        # Nothing but our own script and stylesheet may run or load. No images at all, so a reply
+        # can never make the browser fetch a URL. Requests may only go back to this origin.
+        "Content-Security-Policy": ("default-src 'none'; script-src 'self'; style-src 'self'; "
+                                    "connect-src 'self'; img-src 'none'; base-uri 'none'; "
+                                    "form-action 'none'; frame-ancestors 'none'"),
+        "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
+        "Cache-Control": "no-store", "X-Frame-Options": "DENY",
+    }
+    if cfg.ui.enabled:
+        @app.get("/", include_in_schema=False)
+        async def root():
+            return RedirectResponse("/ui")
+
+        @app.get("/ui", include_in_schema=False)
+        async def ui_index():
+            return Response((ui_dir / "index.html").read_bytes(), media_type="text/html", headers=ui_headers)
+
+        @app.get("/ui/{name}", include_in_schema=False)
+        async def ui_asset(name: str):
+            if name not in ui_files:                     # fixed allowlist: no path is ever built from input
+                return Response(status_code=404)
+            return Response((ui_dir / name).read_bytes(), media_type=ui_files[name], headers=ui_headers)
 
     @app.get("/session")
     async def session_info(request: Request):

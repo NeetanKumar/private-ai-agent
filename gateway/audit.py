@@ -44,6 +44,21 @@ class AuditLog:
                 f.flush()
                 os.fsync(f.fileno())
 
+    def records_for(self, user: str, limit: int = 50) -> list:
+        """A user's own records, newest first. Records hold hashes and counts only."""
+        if not self.path.exists():
+            return []
+        out = []
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("user") == user:
+                    out.append(r)
+        return out[::-1][:limit]
+
     def count(self) -> int:
         if not self.path.exists():
             return 0

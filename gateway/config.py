@@ -111,6 +111,10 @@ class SecurityCfg(_Strict):
     sanitize_output: bool = True          # strip auto-loading images / active HTML from replies
 
 
+class UiCfg(_Strict):
+    enabled: bool = True                  # the built-in test UI at /ui; set false to serve no UI
+
+
 class AuditCfg(_Strict):
     path: str = "/audit/audit.jsonl"
 
@@ -126,6 +130,7 @@ class Settings(_Strict):
     rag: RagCfg = RagCfg()
     tools: ToolsCfg = ToolsCfg()
     security: SecurityCfg = SecurityCfg()
+    ui: UiCfg = UiCfg()
 
     @field_validator("sources")
     @classmethod

@@ -40,10 +40,14 @@ class SecurityLog:
                 f.flush()
                 os.fsync(f.fileno())
 
-    def events(self) -> List[dict]:
+    def events(self, user: Optional[str] = None, limit: Optional[int] = None) -> List[dict]:
+        """Events (newest first if a limit is given), optionally only one user's."""
         if not self.path.exists():
             return []
-        return [json.loads(l) for l in self.path.read_text().splitlines() if l]
+        rows = [json.loads(l) for l in self.path.read_text().splitlines() if l]
+        if user is not None:
+            rows = [r for r in rows if r.get("user") == user]
+        return rows[::-1][:limit] if limit else rows
 
 
 def filter_client_tools(client_names: List[str], enabled: List[str], user: str,
