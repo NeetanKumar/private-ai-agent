@@ -244,18 +244,6 @@
     });
   }
 
-  /* ---- tools ---- */
-  function runTool(name) {
-    var args = {};
-    if (name === "read_file") args.path = $("t-read").value;
-    if (name === "search_files") args.query = $("t-search").value;
-    if (name === "context_query") args.query = $("t-ctxq").value;
-    $("tool-out").textContent = "running…";
-    api("POST", "/v1/tools/" + name, { arguments: args }).then(function (r) {
-      $("tool-out").textContent = r.status === 200 ? r.data.content : "error: " + ((r.data && r.data.error) || r.status);
-    });
-  }
-
   /* ---- logs ---- */
   function fillTable(id, rows, cols) {
     var tb = $(id).querySelector("tbody"); clear(tb);
@@ -300,7 +288,7 @@
     document.querySelectorAll(".tab").forEach(function (t) {
       t.addEventListener("click", function () {
         document.querySelectorAll(".tab").forEach(function (x) { x.classList.toggle("active", x === t); });
-        ["chat", "tools", "logs"].forEach(function (n) { show($("tab-" + n), n === t.dataset.tab); });
+        ["chat", "logs"].forEach(function (n) { show($("tab-" + n), n === t.dataset.tab); });
         show($("sidebar"), t.dataset.tab === "chat");
         if (t.dataset.tab === "logs") loadLogs();
       });
@@ -347,9 +335,6 @@
       if (e.dataTransfer.files && e.dataTransfer.files.length) addFilesAsContext(e.dataTransfer.files);
     });
 
-    document.querySelectorAll("[data-tool]").forEach(function (b) {
-      b.addEventListener("click", function () { runTool(b.dataset.tool); });
-    });
     $("refresh-logs").addEventListener("click", loadLogs);
 
     // A file dropped outside the dropzone would otherwise navigate the tab away to open it.
