@@ -306,13 +306,6 @@
       });
     });
 
-    $("ctx-add").addEventListener("click", function () {
-      var text = $("ctx-text").value, source = $("ctx-source").value.trim();
-      if (!text.trim() || !source) return;
-      state.context.push({ text: text, source: uniqueSourceName(sanitizeSourceName(source)) });
-      $("ctx-text").value = ""; renderChips();
-    });
-
     $("attach-btn").addEventListener("click", function () { $("attach-input").click(); });
     $("attach-input").addEventListener("change", function () {
       addFilesAsContext(this.files); this.value = "";
