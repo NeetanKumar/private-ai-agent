@@ -50,6 +50,11 @@ services:
     volumes:
       - ollama_models:/root/.ollama
     networks: [pull]
+    # Docker's embedded resolver (127.0.0.11) forwards to whatever is in the host's /etc/resolv.conf.
+    # On hosts running systemd-resolved that file points at the loopback stub 127.0.0.53, which is
+    # not reachable from inside a container's network namespace, so lookups fail ("server
+    # misbehaving") even though the host itself resolves names fine. Public resolvers sidestep it.
+    dns: [1.1.1.1, 8.8.8.8]
     restart: "no"
 
   # Same model server without a GPU. Reachable by the gateway under the same name ("ollama"), same

@@ -18,7 +18,7 @@ models:
   default: daily
   # Extra fields sent to the local model server on every request. For a slow "thinking" model try
   # { reasoning_effort: none }. Leave empty otherwise.
-  extra_body: {}
+  extra_body: { reasoning_effort: none }
   aliases:
     daily:     { id: "qwen3.5:4b", context: 262144 }   # TESTING ONLY: revert before real use (qwen3.5:9b)
     on-demand: { id: "qwen3.5:4b", context: 262144 }   # TESTING ONLY: revert before real use (qwen3.6:27b)

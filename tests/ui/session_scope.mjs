@@ -18,9 +18,9 @@ check("wrong token is rejected", (await ev("document.getElementById('login-error
 await ev("document.getElementById('token').value='owner-token-123'; document.getElementById('login-form').requestSubmit(); 1");
 await until("!document.getElementById('app').hidden", "app visible");
 check("connects with the right token", await ev("document.getElementById('who').textContent") === "user: owner");
-check("models listed", (await ev("Array.from(document.getElementById('model').options).map(o=>o.value).join(',')")) === "daily,on-demand");
 check("per-message consent checkbox is NOT visible in session scope", (await ev("document.getElementById('req-consent-wrap').offsetParent")) === null);
 check("session consent checkbox is visible in session scope", (await ev("document.getElementById('consent-wrap').offsetParent")) !== null);
+check("no model picker is shown", (await ev("document.getElementById('model')")) === null);
 check("session starts CLEAN", (await ev("document.getElementById('taint-badge').textContent")) === "CLEAN");
 
 // clean question, local answer, frontier offered
@@ -60,6 +60,69 @@ await ev("document.getElementById('new-session').click(); 1");
 await until("document.getElementById('taint-badge').textContent === 'CLEAN' && document.querySelectorAll('.msg.assistant').length === 0", "new session");
 check("New session clears taint and the transcript", true);
 check("consent cleared by new session", (await ev("document.getElementById('s-consent').textContent")) === "not given");
+
+// attach a file via the + button (real File objects, real FileReader, no mocking)
+await ev(`
+  var dt = new DataTransfer();
+  dt.items.add(new File(["salary bands: L5 = 250k"], "notes.txt", {type: "text/plain"}));
+  document.getElementById('attach-input').files = dt.files;
+  document.getElementById('attach-input').dispatchEvent(new Event('change', {bubbles:true}));
+`);
+await until("document.querySelectorAll('#ctx-list li').length === 1", "file chip added via the + button");
+check("a file chosen with the + button becomes a context chip named after the file",
+  (await ev("document.getElementById('ctx-list').textContent")).includes("notes.txt"));
+
+// drag a second file onto the message box itself: real dragenter/dragover/drop events
+await ev(`
+  window.__dt2 = new DataTransfer();
+  window.__dt2.items.add(new File(["board minutes: acquisition of ExampleCorp"], "board.md", {type: "text/markdown"}));
+  var dz = document.getElementById('dropzone');
+  dz.dispatchEvent(new DragEvent('dragenter', {bubbles:true, cancelable:true, dataTransfer: window.__dt2}));
+  dz.dispatchEvent(new DragEvent('dragover', {bubbles:true, cancelable:true, dataTransfer: window.__dt2}));
+`);
+check("dragging a file over the message box highlights it as a drop target",
+  await ev("document.getElementById('dropzone').classList.contains('drag-over')"));
+await ev("document.getElementById('dropzone').dispatchEvent(new DragEvent('drop', {bubbles:true, cancelable:true, dataTransfer: window.__dt2}));");
+await until("document.querySelectorAll('#ctx-list li').length === 2", "second file chip added via drop");
+check("dropping a file onto the message box attaches it",
+  (await ev("document.getElementById('ctx-list').textContent")).includes("board.md"));
+check("the drag-over highlight clears after the drop",
+  !(await ev("document.getElementById('dropzone').classList.contains('drag-over')")));
+await shot("4b-file-attached");
+
+// an unsupported extension is refused, not silently attached
+await ev(`
+  var dt3 = new DataTransfer();
+  dt3.items.add(new File(["binary-ish"], "program.exe", {type: "application/octet-stream"}));
+  document.getElementById('attach-input').files = dt3.files;
+  document.getElementById('attach-input').dispatchEvent(new Event('change', {bubbles:true}));
+`);
+await until("!document.getElementById('attach-error').hidden", "attach error shown for a bad extension");
+check("an unsupported file type is rejected with a visible message and no new chip",
+  (await ev("document.getElementById('attach-error').textContent")).includes("only text files") &&
+  (await ev("document.querySelectorAll('#ctx-list li').length")) === 2);
+
+// an oversized file is refused too
+await ev(`
+  var dt4 = new DataTransfer();
+  dt4.items.add(new File(["x".repeat(400000)], "huge.txt", {type: "text/plain"}));
+  document.getElementById('attach-input').files = dt4.files;
+  document.getElementById('attach-input').dispatchEvent(new Event('change', {bubbles:true}));
+`);
+await until("document.getElementById('attach-error').textContent.includes('too large')", "attach error shown for an oversized file");
+check("an oversized file is rejected, not attached", (await ev("document.querySelectorAll('#ctx-list li').length")) === 2);
+
+// attached files taint the session exactly like pasted context, and both are sent
+await say("what do the attached files say?");
+check("attached files taint the session PRIVATE, same as pasted context",
+  (await ev("document.getElementById('taint-badge').textContent")) === "PRIVATE");
+const attachedNote = await ev("Array.from(document.querySelectorAll('.msg.note')).find(n => n.textContent.includes('attached context'))?.textContent || ''");
+check("both attached files were sent as context, named by their filenames",
+  attachedNote.includes("notes.txt") && attachedNote.includes("board.md"), attachedNote);
+check("chips are cleared from the composer after sending", (await ev("document.querySelectorAll('#ctx-list li').length")) === 0);
+
+await ev("document.getElementById('new-session').click(); 1");
+await until("document.getElementById('taint-badge').textContent === 'CLEAN'", "session reset after the attach test");
 
 // docs mode with nothing ingested
 await ev("document.getElementById('docs').checked = true; 1");
