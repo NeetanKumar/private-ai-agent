@@ -159,16 +159,7 @@ await until("document.getElementById('taint-badge').textContent === 'CLEAN'", "s
 check("no lane picker or documents checkbox remain in the composer",
   (await ev("document.getElementById('lane')")) === null && (await ev("document.getElementById('docs')")) === null);
 
-// tools tab
-await ev("document.querySelector('[data-tab=tools]').click(); 1");
-await ev("document.querySelector('[data-tool=list_files]').click(); 1");
-await until("document.getElementById('tool-out').textContent.includes('plan.md')", "list_files output");
-await ev("document.getElementById('t-read').value='plan.md'; document.querySelector('[data-tool=read_file]').click(); 1");
-await until("document.getElementById('tool-out').textContent.includes('October 21')", "read_file output");
-await ev("document.getElementById('t-read').value='../../etc/passwd'; document.querySelector('[data-tool=read_file]').click(); 1");
-await until("document.getElementById('tool-out').textContent.startsWith('error')", "traversal refused");
-check("tools tab reads own file and refuses traversal", true, await ev("document.getElementById('tool-out').textContent"));
-await shot("5-tools");
+check("tools tab is removed from the UI", (await ev("document.querySelector('[data-tab=tools]')")) === null);
 
 // logs tab
 await ev("document.querySelector('[data-tab=logs]').click(); 1");

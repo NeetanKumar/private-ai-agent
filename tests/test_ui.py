@@ -79,7 +79,7 @@ def test_ui_javascript_parses():
 def test_ui_ids_used_by_the_script_exist_in_the_page():
     html, js = (UI / "index.html").read_text(), (UI / "app.js").read_text()
     ids = set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', js))
-    ids |= {"tab-" + t for t in ("chat", "tools", "logs")}
+    ids |= {"tab-" + t for t in ("chat", "logs")}
     ids -= {"tab-"}
     missing = [i for i in ids if f'id="{i}"' not in html]
     assert not missing, missing
