@@ -10,3 +10,6 @@
 - **Output sanitization**: strips auto-loading images/active HTML from replies (exfiltration via markdown)
 - **Injection resistance**: tool/doc content treated as untrusted data, can't alter taint or trigger tools
 - **`/new`**: only way to clear taint — no auto-decay, no heuristics
+- **Action-tool allowlist**: 8 hardcoded actions (`gateway/action_tools.py`), empty by default, config can only narrow
+- **Action confirmation**: write actions stage instead of executing unless confirmed; `gmail_send`/`gmail_reply`/`calendar_create` use a wording heuristic (not a model call) with a fail-safe "require confirmation" default — flagged exception, see `docs/AGENT_ACTIONS_PLAN.md`
+- **Action audit log**: every staged/executed action logged (hash of args, never raw args)

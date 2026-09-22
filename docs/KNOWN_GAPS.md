@@ -27,6 +27,19 @@ what has and has not been verified.
   the six off-topic ones. The four whose topic is present but whose fact is absent depend on the local
   model obeying its instruction to reply "not in documents", which is unverified.
 
+## Action tools (Gmail, Calendar, reminders)
+
+- **No idempotency key on `POST /v1/actions/{name}`.** Repeating the same `confirm: true` call
+  executes it again — a retried "send email" sends twice.
+- **`judge_confirmation_needed()` is a wording heuristic, not a model call, and is a real
+  guardrail exception.** It only inspects text for it: `context_hint` MUST be the user's own
+  typed words, never text from a document/email, or an injection can talk its way past
+  confirmation. See `gateway/action_tools.py`'s module docstring.
+- **No UI** for actions; API-only (`/v1/actions`, `/v1/actions/{name}`).
+- **No injection-corpus coverage** of the confirmation heuristic specifically.
+- **Gmail/Calendar executors are unit-tested against a mocked transport only** — never called
+  against the real Google APIs (needs the one-time OAuth step, see `docs/AGENT_ACTIONS_PLAN.md`).
+
 ## Unverified
 
 - **Retrieval quality with a real embedding model.** The measured recall and reciprocal rank come from
