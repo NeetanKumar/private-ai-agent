@@ -19,6 +19,7 @@ services:
       - ./config.yaml:/app/infra/config.yaml:ro
       - audit_log:/audit
       - rag_data:/data/rag
+      - actions_data:/data/actions    # local reminders storage (only used if actions.enabled is non-empty)
       - ../data/inbox:/inbox:ro       # one folder per user: data/inbox/<user id>/ (read-only tools + ingest)
     ports:
       # Loopback by default. To reach it over Tailscale, set GATEWAY_BIND to the host's tailnet IP.
@@ -108,4 +109,5 @@ networks:
 volumes:
   ollama_models: {}
   audit_log: {}
+  actions_data: {}
   rag_data: {}
