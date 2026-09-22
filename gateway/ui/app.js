@@ -177,10 +177,13 @@
      Runs entirely in the browser: a file's text becomes a context item exactly like the paste box
      below, with the filename as its source. No upload endpoint exists, so this adds no attack
      surface; the taint rules are unchanged (the source still has to be registered CLEAN in
-     infra/config.yaml or it is PRIVATE). Binary formats such as PDF cannot be parsed here, because
-     the page loads no libraries. */
+     infra/config.yaml or it is PRIVATE). PDF cannot be parsed in the browser (the page loads no
+     libraries), so a .pdf is instead sent to the gateway's own /v1/extract-text endpoint, which
+     extracts the text and returns it - nothing is stored server-side. */
   var ATTACH_EXTENSIONS = [".txt", ".md", ".markdown", ".csv", ".json", ".log"];
+  var PDF_EXTENSION = ".pdf";
   var MAX_ATTACH_BYTES = 300000;
+  var MAX_PDF_BYTES = 10 * 1024 * 1024;
 
   function sanitizeSourceName(name) {
     var base = String(name).split(/[\\/]/).pop().replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
@@ -204,24 +207,41 @@
       r.readAsText(file);
     });
   }
+  function extractPdfText(file) {
+    var body = new FormData(); body.append("file", file);
+    return fetch("/v1/extract-text", { method: "POST", headers: { "Authorization": "Bearer " + state.token }, body: body })
+      .then(function (r) { return r.json().catch(function () { return null; }).then(function (data) { return { status: r.status, data: data }; }); });
+  }
   function addFilesAsContext(fileList) {
     var files = Array.prototype.slice.call(fileList || []);
     files.forEach(function (file) {
       var ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+      var addText = function (text) {
+        if (!text.trim()) { attachError(file.name + ": the file is empty."); return; }
+        var source = uniqueSourceName(sanitizeSourceName(file.name));
+        state.context.push({ text: text, source: source, file: true });
+        renderChips();
+      };
+      if (ext === PDF_EXTENSION) {
+        if (file.size > MAX_PDF_BYTES) {
+          attachError(file.name + ": too large (over " + Math.round(MAX_PDF_BYTES / 1e6) + " MB).");
+          return;
+        }
+        extractPdfText(file).then(function (r) {
+          if (r.status === 200) addText(r.data.text);
+          else attachError(file.name + ": " + ((r.data && r.data.error) || "could not extract text").replace(/_/g, " "));
+        }).catch(function () { attachError(file.name + ": could not reach the gateway."); });
+        return;
+      }
       if (ATTACH_EXTENSIONS.indexOf(ext) === -1) {
-        attachError(file.name + ": only text files are supported (" + ATTACH_EXTENSIONS.join(", ") + ").");
+        attachError(file.name + ": unsupported type (" + ATTACH_EXTENSIONS.concat([PDF_EXTENSION]).join(", ") + ").");
         return;
       }
       if (file.size > MAX_ATTACH_BYTES) {
         attachError(file.name + ": too large (over " + Math.round(MAX_ATTACH_BYTES / 1000) + " KB).");
         return;
       }
-      readFileAsText(file).then(function (text) {
-        if (!text.trim()) { attachError(file.name + ": the file is empty."); return; }
-        var source = uniqueSourceName(sanitizeSourceName(file.name));
-        state.context.push({ text: text, source: source, file: true });
-        renderChips();
-      }).catch(function () { attachError(file.name + ": could not read the file."); });
+      readFileAsText(file).then(addText).catch(function () { attachError(file.name + ": could not read the file."); });
     });
   }
 
