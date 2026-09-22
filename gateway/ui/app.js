@@ -127,9 +127,8 @@
     overrides = overrides || {};
     var body = {
       messages: [{ role: "user", content: text }],
-      lane: overrides.lane || $("lane").value
+      lane: overrides.lane || "auto"
     };
-    if ($("docs").checked) body.documents = true;
     if (state.context.length) body.context = state.context.map(function (c) { return { text: c.text, source: c.source }; });
     var scope = state.session && state.session.consent_scope;
     if (scope === "request" && (overrides.consent || $("req-consent").checked)) body.consent = true;
