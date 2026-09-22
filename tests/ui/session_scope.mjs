@@ -156,11 +156,8 @@ check("chips are cleared from the composer after sending", (await ev("document.q
 await ev("document.getElementById('new-session').click(); 1");
 await until("document.getElementById('taint-badge').textContent === 'CLEAN'", "session reset after the attach test");
 
-// docs mode with nothing ingested
-await ev("document.getElementById('docs').checked = true; 1");
-await say("What does my document say?");
-check("no documents ingested gives 'not in documents'", (await ev("Array.from(document.querySelectorAll('.msg.assistant')).pop().firstChild.textContent")) === "not in documents");
-await ev("document.getElementById('docs').checked = false; document.getElementById('new-session').click(); 1");
+check("no lane picker or documents checkbox remain in the composer",
+  (await ev("document.getElementById('lane')")) === null && (await ev("document.getElementById('docs')")) === null);
 
 // tools tab
 await ev("document.querySelector('[data-tab=tools]').click(); 1");
