@@ -44,7 +44,13 @@ check("sidebar shows consent given", (await ev("document.getElementById('s-conse
 await shot("3-frontier-answer");
 
 // private context locks the session
-await ev("document.querySelector('.ctx').open = true; document.getElementById('ctx-text').value='salary bands: L5 = 250k'; document.getElementById('ctx-add').click(); 1");
+await ev(`
+  var dt = new DataTransfer();
+  dt.items.add(new File(["salary bands: L5 = 250k"], "salary.txt", {type: "text/plain"}));
+  document.getElementById('attach-input').files = dt.files;
+  document.getElementById('attach-input').dispatchEvent(new Event('change', {bubbles:true}));
+`);
+await until("document.querySelectorAll('#ctx-list li').length === 1", "chip added");
 check("context chip added", (await ev("document.querySelectorAll('#ctx-list li').length")) === 1);
 await say("Summarise the note");
 check("private context gives taint PRIVATE", (await ev("document.getElementById('taint-badge').textContent")) === "PRIVATE");
