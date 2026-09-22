@@ -5,11 +5,13 @@ through egress()). Auth is a per-user bearer token; each user has an isolated se
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -17,7 +19,8 @@ import httpx
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
-from .audit import AuditLog
+from . import action_tools as actionmod
+from .audit import ActionAuditLog, ActionAuditRecord, AuditLog
 from .config import Settings, get_settings
 from . import tools as toolmod
 from .lanes import BadRequest, handle_chat, parse_chat
@@ -39,8 +42,20 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     registry = SourceRegistry(cfg.sources)
     audit = AuditLog(cfg.audit.path)
     sec = SecurityLog(cfg.security.path)
+    action_audit = ActionAuditLog(cfg.actions.audit_path)
     sessions = SessionStore()
     rag = build_retriever(cfg) if cfg.rag.enabled else None
+    google: Optional[actionmod.GoogleClient] = None
+    if cfg.actions.enabled:
+        og = cfg.actions.oauth_google
+        cid = os.environ.get(og.client_id_env, "")
+        csec = os.environ.get(og.client_secret_env, "")
+        rtok = os.environ.get(og.refresh_token_env, "")
+        if cid and csec and rtok:
+            google = actionmod.GoogleClient(cid, csec, rtok)
+        else:
+            log.warning("actions enabled but Google OAuth env vars are not set; "
+                       "gmail_* / calendar_* actions will fail until they are")
     tokens: List[Tuple[str, str]] = []
     for u in cfg.users:
         tok = os.environ.get(u.token_env, "")
@@ -129,6 +144,76 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # The taint shown here is advisory. The gateway assigns the real taint itself when the
         # result comes back in a chat turn, and it never trusts a client-supplied value.
         return {"tool": name, "content": content, "taint": "PRIVATE"}
+
+    @app.get("/v1/actions")
+    async def action_definitions(request: Request):
+        """The canonical action-tool definitions enabled for this deployment. Empty unless the
+        operator explicitly enabled some in actions.enabled (empty by default)."""
+        if authenticate(request) is None:
+            return unauthorized()
+        return {"actions": [actionmod.ACTION_TOOLS[n].definition() for n in cfg.actions.enabled]}
+
+    @app.post("/v1/actions/{name}")
+    async def run_action(name: str, request: Request):
+        """Execute or stage one action tool for the authenticated user.
+
+        Body: {"arguments": {...}, "confirm": bool, "context_hint": str}. `context_hint` is used
+        ONLY for tools whose confirmation requirement is "judge", and must be the user's own typed
+        words - never text drawn from a document, email, or other untrusted source (see the
+        warning in gateway/action_tools.py). If the tool requires confirmation and confirm is not
+        true, nothing is executed: the call is staged and reported back, and logged as such.
+        Known gap: this endpoint has no idempotency key, so repeating a confirm=true call executes
+        it again (see docs/KNOWN_GAPS.md)."""
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        spec = actionmod.get_action_spec(name, cfg.actions.enabled)
+        if spec is None:
+            sec.write(uid, "action_call_blocked", name, "not_in_action_allowlist")
+            return JSONResponse({"error": "action_not_permitted"}, status_code=403)
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        args = payload.get("arguments", {})
+        confirm = bool(payload.get("confirm") is True)
+        context_hint = payload.get("context_hint")
+        args_hash = hashlib.sha256(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest()
+
+        needs_confirmation = spec.requires_confirmation
+        if needs_confirmation == "judge":
+            hint = context_hint if isinstance(context_hint, str) else ""
+            needs_confirmation = actionmod.judge_confirmation_needed(hint)
+
+        if needs_confirmation and not confirm:
+            sec.write(uid, "action_staged", name, "confirmation_required")
+            action_audit.write(ActionAuditRecord(
+                ts=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                user=uid, tool=name, args_sha256=args_hash, status="staged"))
+            return {"status": "needs_confirmation", "action": name}
+
+        ctx = actionmod.ActionContext(uid, cfg.actions.reminders_dir, google)
+        status = "error"
+        try:
+            content = await actionmod.execute_action(name, args, ctx, cfg.actions.enabled)
+            status = "executed"
+            return {"action": name, "status": "executed", "result": content}
+        except actionmod.ActionError as e:
+            return JSONResponse({"action": name, "status": "error", "error": str(e)}, status_code=400)
+        finally:
+            action_audit.write(ActionAuditRecord(
+                ts=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                user=uid, tool=name, args_sha256=args_hash, status=status))
+
+    @app.get("/v1/actions-audit")
+    async def my_action_audit(request: Request, limit: int = 50):
+        """The caller's own action records (hashes and counts only), newest first."""
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        return {"records": action_audit.records_for(uid, max(1, min(limit, 200)))}
 
     @app.get("/v1/audit")
     async def my_audit(request: Request, limit: int = 50):
