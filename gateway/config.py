@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from .taint import parse_taint
 from .tools import READ_ONLY_TOOLS
+from .action_tools import ACTION_TOOLS
 
 
 class _Strict(BaseModel):
@@ -109,6 +110,30 @@ class ToolsCfg(_Strict):
         return v
 
 
+class OAuthGoogleCfg(_Strict):
+    # Env var NAMES only, never raw secrets, same pattern as frontier.api_key_env.
+    client_id_env: str = "GOOGLE_CLIENT_ID"
+    client_secret_env: str = "GOOGLE_CLIENT_SECRET"
+    refresh_token_env: str = "GOOGLE_REFRESH_TOKEN"
+
+
+class ActionsCfg(_Strict):
+    # May only NARROW the code allowlist in gateway/action_tools.py; unknown names fail at startup.
+    # Empty by default: nothing here is active until explicitly enabled.
+    enabled: List[str] = []
+    reminders_dir: str = "/data/actions/reminders"
+    audit_path: str = "/audit/actions.jsonl"
+    oauth_google: OAuthGoogleCfg = OAuthGoogleCfg()
+
+    @field_validator("enabled")
+    @classmethod
+    def _enabled_ok(cls, v: List[str]) -> List[str]:
+        unknown = [n for n in v if n not in ACTION_TOOLS]
+        if unknown:
+            raise ValueError(f"actions.enabled names tools outside the action allowlist: {unknown}")
+        return v
+
+
 class SecurityCfg(_Strict):
     path: str = "/audit/security.jsonl"
     sanitize_output: bool = True          # strip auto-loading images / active HTML from replies
@@ -132,6 +157,7 @@ class Settings(_Strict):
     audit: AuditCfg = AuditCfg()
     rag: RagCfg = RagCfg()
     tools: ToolsCfg = ToolsCfg()
+    actions: ActionsCfg = ActionsCfg()
     security: SecurityCfg = SecurityCfg()
     ui: UiCfg = UiCfg()
 
