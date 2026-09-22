@@ -166,10 +166,62 @@
   function renderChips() {
     var ul = $("ctx-list"); clear(ul);
     state.context.forEach(function (c, i) {
-      var li = el("li", null, c.source + " (" + c.text.length + " chars)");
-      var x = el("button", null, "×"); x.type = "button"; x.setAttribute("aria-label", "Remove");
+      var li = el("li", null, (c.file ? "📎 " : "") + c.source + " (" + c.text.length + " chars)");
+      var x = el("button", null, "×"); x.type = "button"; x.setAttribute("aria-label", "Remove " + c.source);
       x.addEventListener("click", function () { state.context.splice(i, 1); renderChips(); });
       li.appendChild(x); ul.appendChild(li);
+    });
+  }
+
+  /* ---- attach files as context (drag-and-drop, or the + button) ----
+     Runs entirely in the browser: a file's text becomes a context item exactly like the paste box
+     below, with the filename as its source. No upload endpoint exists, so this adds no attack
+     surface; the taint rules are unchanged (the source still has to be registered CLEAN in
+     infra/config.yaml or it is PRIVATE). Binary formats such as PDF cannot be parsed here, because
+     the page loads no libraries. */
+  var ATTACH_EXTENSIONS = [".txt", ".md", ".markdown", ".csv", ".json", ".log"];
+  var MAX_ATTACH_BYTES = 300000;
+
+  function sanitizeSourceName(name) {
+    var base = String(name).split(/[\\/]/).pop().replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
+    return base || "attached_file";
+  }
+  function uniqueSourceName(name) {
+    var used = {}; state.context.forEach(function (c) { used[c.source] = true; });
+    if (!used[name]) return name;
+    for (var i = 2; used[name + "_" + i]; i++) {}
+    return name + "_" + i;
+  }
+  function attachError(msg) {
+    var box = $("attach-error"); box.textContent = msg; show(box, true);
+    clearTimeout(attachError._t); attachError._t = setTimeout(function () { show(box, false); }, 6000);
+  }
+  function readFileAsText(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result || "")); };
+      r.onerror = function () { reject(new Error("could not read the file")); };
+      r.readAsText(file);
+    });
+  }
+  function addFilesAsContext(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    files.forEach(function (file) {
+      var ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+      if (ATTACH_EXTENSIONS.indexOf(ext) === -1) {
+        attachError(file.name + ": only text files are supported (" + ATTACH_EXTENSIONS.join(", ") + ").");
+        return;
+      }
+      if (file.size > MAX_ATTACH_BYTES) {
+        attachError(file.name + ": too large (over " + Math.round(MAX_ATTACH_BYTES / 1000) + " KB).");
+        return;
+      }
+      readFileAsText(file).then(function (text) {
+        if (!text.trim()) { attachError(file.name + ": the file is empty."); return; }
+        var source = uniqueSourceName(sanitizeSourceName(file.name));
+        state.context.push({ text: text, source: source, file: true });
+        renderChips();
+      }).catch(function () { attachError(file.name + ": could not read the file."); });
     });
   }
 
@@ -257,13 +309,43 @@
     $("ctx-add").addEventListener("click", function () {
       var text = $("ctx-text").value, source = $("ctx-source").value.trim();
       if (!text.trim() || !source) return;
-      state.context.push({ text: text, source: source }); $("ctx-text").value = ""; renderChips();
+      state.context.push({ text: text, source: uniqueSourceName(sanitizeSourceName(source)) });
+      $("ctx-text").value = ""; renderChips();
+    });
+
+    $("attach-btn").addEventListener("click", function () { $("attach-input").click(); });
+    $("attach-input").addEventListener("change", function () {
+      addFilesAsContext(this.files); this.value = "";
+    });
+    var dz = $("dropzone"), dragDepth = 0;
+    ["dragenter", "dragover"].forEach(function (evt) {
+      dz.addEventListener(evt, function (e) {
+        if (!Array.prototype.includes.call(e.dataTransfer.types || [], "Files")) return;
+        e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+        if (evt === "dragenter") dragDepth++;
+        dz.classList.add("drag-over");
+      });
+    });
+    dz.addEventListener("dragleave", function () {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) dz.classList.remove("drag-over");
+    });
+    dz.addEventListener("drop", function (e) {
+      e.preventDefault(); dragDepth = 0; dz.classList.remove("drag-over");
+      if (e.dataTransfer.files && e.dataTransfer.files.length) addFilesAsContext(e.dataTransfer.files);
     });
 
     document.querySelectorAll("[data-tool]").forEach(function (b) {
       b.addEventListener("click", function () { runTool(b.dataset.tool); });
     });
     $("refresh-logs").addEventListener("click", loadLogs);
+
+    // A file dropped outside the dropzone would otherwise navigate the tab away to open it.
+    ["dragover", "drop"].forEach(function (evt) {
+      document.addEventListener(evt, function (e) {
+        if (Array.prototype.includes.call(e.dataTransfer.types || [], "Files")) e.preventDefault();
+      });
+    });
 
     pollHealth(); setInterval(pollHealth, 15000);
     var saved = store(function () { return sessionStorage.getItem("pai_token"); });
