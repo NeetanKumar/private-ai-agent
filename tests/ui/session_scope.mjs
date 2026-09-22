@@ -18,9 +18,9 @@ check("wrong token is rejected", (await ev("document.getElementById('login-error
 await ev("document.getElementById('token').value='owner-token-123'; document.getElementById('login-form').requestSubmit(); 1");
 await until("!document.getElementById('app').hidden", "app visible");
 check("connects with the right token", await ev("document.getElementById('who').textContent") === "user: owner");
-check("models listed", (await ev("Array.from(document.getElementById('model').options).map(o=>o.value).join(',')")) === "daily,on-demand");
 check("per-message consent checkbox is NOT visible in session scope", (await ev("document.getElementById('req-consent-wrap').offsetParent")) === null);
 check("session consent checkbox is visible in session scope", (await ev("document.getElementById('consent-wrap').offsetParent")) !== null);
+check("no model picker is shown", (await ev("document.getElementById('model')")) === null);
 check("session starts CLEAN", (await ev("document.getElementById('taint-badge').textContent")) === "CLEAN");
 
 // clean question, local answer, frontier offered
