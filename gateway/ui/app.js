@@ -52,13 +52,7 @@
       $("who").textContent = "user: " + r.data.user;
       show($("who"), true); show($("disconnect"), true);
       show($("login"), false); show($("app"), true);
-      return api("GET", "/v1/models").then(function (m) {
-        var sel = $("model"); clear(sel);
-        ((m.data && m.data.data) || []).forEach(function (x) {
-          var o = el("option", null, x.id); o.value = x.id; sel.appendChild(o);
-        });
-        renderSession();
-      });
+      renderSession();
     });
   }
   function disconnect() {
@@ -133,7 +127,6 @@
     overrides = overrides || {};
     var body = {
       messages: [{ role: "user", content: text }],
-      model: $("model").value,
       lane: overrides.lane || $("lane").value
     };
     if ($("docs").checked) body.documents = true;
