@@ -52,6 +52,12 @@ class Rig:
     def tool(self, name, args, user="owner"):
         return self.client.post(f"/v1/tools/{name}", json={"arguments": args}, headers=auth(user))
 
+    def action(self, name, args, user="owner", confirm=False, context_hint=None):
+        body = {"arguments": args, "confirm": confirm}
+        if context_hint is not None:
+            body["context_hint"] = context_hint
+        return self.client.post(f"/v1/actions/{name}", json=body, headers=auth(user))
+
     def post(self, body, user="owner"):
         return self.client.post("/v1/chat/completions", json=body, headers=auth(user))
 
@@ -72,7 +78,7 @@ def make_rig(tmp_path, monkeypatch):
     """Build a gateway wired to real stub servers. Adding the second user is config only."""
     made = []
 
-    def _make(auto_route_clean=False, consent_scope="session", extra_sources=None):
+    def _make(auto_route_clean=False, consent_scope="session", extra_sources=None, extra_actions=None):
         monkeypatch.setenv("GATEWAY_TOKEN_OWNER", TOKENS["owner"])
         monkeypatch.setenv("GATEWAY_TOKEN_GUEST", TOKENS["guest"])
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -93,6 +99,9 @@ def make_rig(tmp_path, monkeypatch):
         sec_path = tmp_path / f"security-{len(made)}.jsonl"
         raw["tools"]["files_root"] = str(files_root)
         raw["security"]["path"] = str(sec_path)
+        raw["actions"]["enabled"] = list(extra_actions or [])
+        raw["actions"]["reminders_dir"] = str(tmp_path / f"reminders-{len(made)}")
+        raw["actions"]["audit_path"] = str(tmp_path / f"actions-audit-{len(made)}.jsonl")
         app = create_app(Settings(**raw))
         client = TestClient(app)
         client.__enter__()
