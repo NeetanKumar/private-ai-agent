@@ -46,8 +46,15 @@
         </div>
 
         <form id="composer">
-          <textarea id="input" rows="3" placeholder="Ask something. Enter to send, Shift+Enter for a new line." required></textarea>
+          <div id="dropzone">
+            <textarea id="input" rows="3" placeholder="Ask something. Enter to send, Shift+Enter for a new line. Drop a text file to attach it as context." required></textarea>
+            <div id="drop-overlay" aria-hidden="true">Drop to attach as private context</div>
+          </div>
+          <input id="attach-input" type="file" accept=".txt,.md,.markdown,.csv,.json,.log" multiple hidden>
+          <p id="attach-error" class="error" role="alert" hidden></p>
+          <ul id="ctx-list" class="chips"></ul>
           <div class="options">
+            <button id="attach-btn" type="button" class="icon-btn" title="Attach a text file as context" aria-label="Attach a text file as context">+</button>
             <label>Lane
               <select id="lane">
                 <option value="auto">auto (follow the rules)</option>
@@ -61,14 +68,13 @@
         </form>
 
         <details class="ctx">
-          <summary>Add private context to the next message</summary>
-          <p class="muted">Context is tagged by its source name. Any source not marked CLEAN in <code>infra/config.yaml</code> is PRIVATE, and that locks the session to the local model.</p>
+          <summary>Paste text as context instead</summary>
+          <p class="muted">Context is tagged by its source name (a file's name, or the text below). Any source not marked CLEAN in <code>infra/config.yaml</code> is PRIVATE, and that locks the session to the local model.</p>
           <div class="row">
             <input id="ctx-source" type="text" value="pasted_note" aria-label="Source name">
             <button id="ctx-add" type="button">Add</button>
           </div>
           <textarea id="ctx-text" rows="3" placeholder="Paste text to use as context"></textarea>
-          <ul id="ctx-list" class="chips"></ul>
         </details>
       </section>
 
