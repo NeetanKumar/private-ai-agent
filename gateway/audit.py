@@ -64,3 +64,43 @@ class AuditLog:
             return 0
         with open(self.path, encoding="utf-8") as f:
             return sum(1 for _ in f)
+
+
+@dataclass(frozen=True)
+class ActionAuditRecord:
+    """One record per action-tool call: staged (not yet run) or executed. Hashes and counts only,
+    same rule as AuditRecord above - no prompt bodies, no raw arguments."""
+    ts: str
+    user: str
+    tool: str
+    args_sha256: str
+    status: str                  # staged | executed | error
+
+
+class ActionAuditLog:
+    def __init__(self, path: str):
+        self.path = Path(path)
+        self._lock = threading.Lock()
+
+    def write(self, rec: ActionAuditRecord) -> None:
+        line = json.dumps(asdict(rec), separators=(",", ":"))
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+
+    def records_for(self, user: str, limit: int = 50) -> list:
+        if not self.path.exists():
+            return []
+        out = []
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("user") == user:
+                    out.append(r)
+        return out[::-1][:limit]
