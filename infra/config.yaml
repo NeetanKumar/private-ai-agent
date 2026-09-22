@@ -68,6 +68,27 @@ tools:
   max_result_chars: 20000
   max_calls_per_turn: 4
 
+# Action tools: reminders (local), Gmail, Calendar. Nothing here is active until you list it
+# under `enabled` - the default below turns NOTHING on, so a fresh clone behaves exactly as
+# before this feature existed.
+#
+# Two deviations from the rest of this project's deterministic-only design, see
+# gateway/action_tools.py and docs/AGENT_ACTIONS_PLAN.md for the full explanation:
+#   - gmail_send / gmail_reply / calendar_create use a wording heuristic (not a model call) to
+#     decide whether to skip confirmation. Fail-safe default is to require confirmation.
+#   - Gmail/Calendar content is PRIVATE by default like any unregistered source (see `sources:`
+#     above). To mark it CLEAN instead - a materially riskier choice than this project's own
+#     default - add entries such as `"tool:gmail_read": CLEAN` under `sources:` yourself. This
+#     file does not do that for you.
+actions:
+  enabled: []                   # e.g. [reminder_create, reminder_list, reminder_delete]
+  reminders_dir: /data/actions/reminders
+  audit_path: /audit/actions.jsonl
+  oauth_google:                 # env VAR NAMES only; see scripts/google_oauth_setup.py
+    client_id_env: GOOGLE_CLIENT_ID
+    client_secret_env: GOOGLE_CLIENT_SECRET
+    refresh_token_env: GOOGLE_REFRESH_TOKEN
+
 security:
   path: /audit/security.jsonl
   sanitize_output: true
