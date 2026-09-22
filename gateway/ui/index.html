@@ -31,7 +31,6 @@
   <main id="app" hidden>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="chat" role="tab">Chat</button>
-      <button class="tab" data-tab="tools" role="tab">Files &amp; tools</button>
       <button class="tab" data-tab="logs" role="tab">Logs</button>
     </nav>
 
@@ -78,15 +77,6 @@
         <button id="new-session">New session (<code>/new</code>)</button>
         <p class="muted small"><code>/new</code> is the only way to clear taint.</p>
       </aside>
-
-      <section id="tab-tools" class="panel" hidden>
-        <p class="muted">These run directly as you against your own files folder and document store. Results are not added to the chat. Only the read-only tools exist.</p>
-        <div class="tool"><h3>list_files</h3><button data-tool="list_files">Run</button></div>
-        <div class="tool"><h3>read_file</h3><input id="t-read" placeholder="notes/plan.md" aria-label="path"><button data-tool="read_file">Run</button></div>
-        <div class="tool"><h3>search_files</h3><input id="t-search" placeholder="words to find" aria-label="query"><button data-tool="search_files">Run</button></div>
-        <div class="tool"><h3>context_query</h3><input id="t-ctxq" placeholder="search your ingested documents" aria-label="query"><button data-tool="context_query">Run</button></div>
-        <pre id="tool-out" class="out">(output appears here)</pre>
-      </section>
 
       <section id="tab-logs" class="panel" hidden>
         <div class="row"><button id="refresh-logs">Refresh</button><span class="muted">Your own records only. Hashes and counts, never prompt text.</span></div>
