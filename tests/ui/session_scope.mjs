@@ -96,6 +96,32 @@ check("the drag-over highlight clears after the drop",
   !(await ev("document.getElementById('dropzone').classList.contains('drag-over')")));
 await shot("4b-file-attached");
 
+// a real PDF is sent to /v1/extract-text and its extracted text becomes a context chip
+await ev(`
+  function minimalPdf(lines) {
+    var esc = s => s.replace(/\\\\/g, "\\\\\\\\").replace(/\\(/g, "\\\\(").replace(/\\)/g, "\\\\)");
+    var ops = ["BT", "/F1 12 Tf", "72 720 Td", "16 TL"].concat(lines.map(l => "(" + esc(l) + ") Tj T*")).concat(["ET"]).join("\\n");
+    var objs = ["<</Type/Catalog/Pages 2 0 R>>", "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+      "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+      "<</Length " + ops.length + ">>\\nstream\\n" + ops + "\\nendstream", "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>"];
+    var out = "%PDF-1.4\\n", offsets = [];
+    objs.forEach((body, i) => { offsets.push(out.length); out += (i + 1) + " 0 obj\\n" + body + "\\nendobj\\n"; });
+    var xref = out.length;
+    out += "xref\\n0 " + (objs.length + 1) + "\\n0000000000 65535 f \\n";
+    offsets.forEach(o => { out += String(o).padStart(10, "0") + " 00000 n \\n"; });
+    out += "trailer\\n<</Size " + (objs.length + 1) + "/Root 1 0 R>>\\nstartxref\\n" + xref + "\\n%%EOF\\n";
+    return out;
+  }
+  var bytes = new TextEncoder().encode(minimalPdf(["PDF ATTACH TEST 42", "generated in-browser for a real end-to-end check"]));
+  window.__pdfDt = new DataTransfer();
+  window.__pdfDt.items.add(new File([bytes], "sample.pdf", {type: "application/pdf"}));
+  document.getElementById('attach-input').files = window.__pdfDt.files;
+  document.getElementById('attach-input').dispatchEvent(new Event('change', {bubbles:true}));
+`);
+await until("document.querySelectorAll('#ctx-list li').length === 3", "PDF extracted and chip added", 20000);
+check("a real PDF is extracted server-side and attached as context",
+  (await ev("document.getElementById('ctx-list').textContent")).includes("sample.pdf"));
+
 // an unsupported extension is refused, not silently attached
 await ev(`
   var dt3 = new DataTransfer();
@@ -105,8 +131,8 @@ await ev(`
 `);
 await until("!document.getElementById('attach-error').hidden", "attach error shown for a bad extension");
 check("an unsupported file type is rejected with a visible message and no new chip",
-  (await ev("document.getElementById('attach-error').textContent")).includes("only text files") &&
-  (await ev("document.querySelectorAll('#ctx-list li').length")) === 2);
+  (await ev("document.getElementById('attach-error').textContent")).includes("unsupported type") &&
+  (await ev("document.querySelectorAll('#ctx-list li').length")) === 3);
 
 // an oversized file is refused too
 await ev(`
@@ -116,15 +142,15 @@ await ev(`
   document.getElementById('attach-input').dispatchEvent(new Event('change', {bubbles:true}));
 `);
 await until("document.getElementById('attach-error').textContent.includes('too large')", "attach error shown for an oversized file");
-check("an oversized file is rejected, not attached", (await ev("document.querySelectorAll('#ctx-list li').length")) === 2);
+check("an oversized file is rejected, not attached", (await ev("document.querySelectorAll('#ctx-list li').length")) === 3);
 
 // attached files taint the session exactly like pasted context, and both are sent
 await say("what do the attached files say?");
 check("attached files taint the session PRIVATE, same as pasted context",
   (await ev("document.getElementById('taint-badge').textContent")) === "PRIVATE");
 const attachedNote = await ev("Array.from(document.querySelectorAll('.msg.note')).find(n => n.textContent.includes('attached context'))?.textContent || ''");
-check("both attached files were sent as context, named by their filenames",
-  attachedNote.includes("notes.txt") && attachedNote.includes("board.md"), attachedNote);
+check("all three attached files were sent as context, named by their filenames",
+  attachedNote.includes("notes.txt") && attachedNote.includes("board.md") && attachedNote.includes("sample.pdf"), attachedNote);
 check("chips are cleared from the composer after sending", (await ev("document.querySelectorAll('#ctx-list li').length")) === 0);
 
 await ev("document.getElementById('new-session').click(); 1");
