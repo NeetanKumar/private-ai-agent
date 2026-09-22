@@ -75,13 +75,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 14px 20px 40px; }
 .offer { border: 1px solid var(--front); background: var(--front-bg); border-radius: 10px; padding: 10px 14px; margin: 8px 0; }
 .offer p { margin: 0 0 8px; }
 #composer { margin-top: 10px; }
-#dropzone { position: relative; }
+#dropzone { display: flex; gap: 8px; align-items: flex-start; }
+#input-wrap { position: relative; flex: 1; min-width: 0; }
 #dropzone.drag-over textarea { border-color: var(--accent); }
 #drop-overlay { display: none; position: absolute; inset: 0; align-items: center; justify-content: center;
   background: var(--user-bg); border: 2px dashed var(--accent); border-radius: 8px; color: var(--accent);
   font-weight: 600; pointer-events: none; }
 #dropzone.drag-over #drop-overlay { display: flex; }
-.icon-btn { width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 1; border-radius: 999px; }
+.icon-btn { flex-shrink: 0; width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 1; border-radius: 999px; margin-top: 4px; }
 #ctx-list:empty { display: none; }
 #attach-error { margin: 6px 0 0; }
 .options { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-top: 8px; }
