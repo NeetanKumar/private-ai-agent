@@ -9,11 +9,12 @@ import hmac
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from .audit import AuditLog
@@ -24,6 +25,10 @@ from .permissions import SecurityLog
 from .session import SessionStore
 from .taint import SourceRegistry
 from rag.factory import build_retriever
+from rag import loaders as rag_loaders
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024   # 10 MB PDF cap for the UI's attach-a-file feature
+MAX_EXTRACTED_CHARS = 300_000         # matches the plain-text attach cap in the UI
 
 log = logging.getLogger("gateway")
 
@@ -140,6 +145,31 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if uid is None:
             return unauthorized()
         return {"events": sec.events(uid, max(1, min(limit, 200)))}
+
+    @app.post("/v1/extract-text")
+    async def extract_text(request: Request, file: UploadFile = File(...)):
+        """Extract text from an uploaded PDF for the UI's file-attach feature. Stateless: nothing is
+        stored, the temp file is deleted immediately, and the extracted text is returned to the
+        caller only. It never touches a session, the document store, or taint - the browser adds the
+        returned text as ordinary context, which is tainted the same as any other attachment."""
+        uid = authenticate(request)
+        if uid is None:
+            return unauthorized()
+        if not (file.filename or "").lower().endswith(".pdf"):
+            return JSONResponse({"error": "only_pdf_supported"}, status_code=400)
+        data = await file.read()
+        if len(data) > MAX_UPLOAD_BYTES:
+            return JSONResponse({"error": "file_too_large"}, status_code=413)
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+            tmp.write(data)
+            tmp.flush()
+            try:
+                text = rag_loaders.load_text(Path(tmp.name))
+            except rag_loaders.RagError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+        if not text.strip():
+            return JSONResponse({"error": "no_text_found"}, status_code=400)
+        return {"text": text[:MAX_EXTRACTED_CHARS]}
 
     # ---- built-in test UI: static files, same origin, no outside assets ----
     ui_dir = Path(__file__).parent / "ui"
