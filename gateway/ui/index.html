@@ -47,21 +47,16 @@
 
         <form id="composer">
           <div id="dropzone">
-            <textarea id="input" rows="3" placeholder="Ask something. Enter to send, Shift+Enter for a new line. Drop a text file to attach it as context." required></textarea>
-            <div id="drop-overlay" aria-hidden="true">Drop to attach as private context</div>
+            <button id="attach-btn" type="button" class="icon-btn" title="Attach a file as context" aria-label="Attach a file as context">+</button>
+            <div id="input-wrap">
+              <textarea id="input" rows="3" placeholder="Ask something. Enter to send, Shift+Enter for a new line. Drop a file to attach it as context." required></textarea>
+              <div id="drop-overlay" aria-hidden="true">Drop to attach as private context</div>
+            </div>
           </div>
           <input id="attach-input" type="file" accept=".txt,.md,.markdown,.csv,.json,.log,.pdf" multiple hidden>
           <p id="attach-error" class="error" role="alert" hidden></p>
           <ul id="ctx-list" class="chips"></ul>
           <div class="options">
-            <button id="attach-btn" type="button" class="icon-btn" title="Attach a text file as context" aria-label="Attach a text file as context">+</button>
-            <label>Lane
-              <select id="lane">
-                <option value="auto">auto (follow the rules)</option>
-                <option value="private">force local</option>
-              </select>
-            </label>
-            <label class="check"><input id="docs" type="checkbox"> Ask my documents</label>
             <label class="check" id="req-consent-wrap" hidden><input id="req-consent" type="checkbox"> Consent to the frontier for this message</label>
             <button type="submit" id="send" class="primary">Send</button>
           </div>
