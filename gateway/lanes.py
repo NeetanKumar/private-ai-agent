@@ -26,6 +26,7 @@ from .egress import (AttachmentsBlocked, EgressBlocked, EgressRequest, FrontierN
                      FrontierUnavailable, TaintBlocked, egress)
 from .fragments import Fragment, Taint
 from .session import Session
+from . import action_tools as actiontools
 from .permissions import BLOCKED_TEXT, SecurityLog, enforce_tool_calls, filter_client_tools
 from .sanitize import StreamSanitizer, sanitize_reply, strip_active_content, strip_text_tool_calls
 from .taint import RESERVED_SOURCES, SourceRegistry, model_output_taint, tool_output_taint
@@ -235,6 +236,41 @@ def _clean_reply(cfg: Settings, sec: Optional[SecurityLog], user: str, text: str
     return text
 
 
+def _enforce_mixed_tool_calls(msg: Dict[str, Any], offered: set, cfg: Settings, uid: str,
+                              sec: Optional[SecurityLog]) -> Tuple[List[Dict[str, Any]], int]:
+    """A model turn can offer both read-only and action tool definitions together. Each call in
+    the model's reply is validated against exactly its own registry - never the other - so a
+    valid action-tool call is never misclassified and dropped as an unauthorized read-only call,
+    and vice versa. A name in neither registry is blocked and logged once, by the read-only
+    enforcer (which every other unknown-tool test in this project already exercises)."""
+    from .tools import READ_ONLY_TOOLS
+    from .action_tools import ACTION_TOOLS
+    raw = msg.get("tool_calls") or []
+    if not isinstance(raw, list):
+        raw = []
+
+    def name_of(c):
+        fn = c.get("function") if isinstance(c, dict) else None
+        return fn.get("name") if isinstance(fn, dict) else None
+
+    ro_calls = [c for c in raw if name_of(c) in READ_ONLY_TOOLS]
+    action_calls = [c for c in raw if name_of(c) in ACTION_TOOLS]
+    other_calls = [c for c in raw if name_of(c) not in READ_ONLY_TOOLS and name_of(c) not in ACTION_TOOLS]
+
+    msg["tool_calls"] = ro_calls + other_calls    # unknown names fall through to the real enforcer
+    kept_ro, blocked_ro = enforce_tool_calls(msg, offered, cfg.tools.enabled, uid, sec,
+                                             cfg.tools.max_calls_per_turn)
+    kept_action, blocked_action = actiontools.enforce_action_tool_calls(
+        action_calls, offered, cfg.actions.enabled, uid, sec, cfg.tools.max_calls_per_turn)
+
+    kept = kept_ro + kept_action
+    if kept:
+        msg["tool_calls"] = kept
+    else:
+        msg.pop("tool_calls", None)
+    return kept, blocked_ro + blocked_action
+
+
 async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, session: Session,
                       inp: ChatInput, rag: Optional[Retriever] = None, sec: Optional[SecurityLog] = None):
     # ---- /new: the only way taint is ever cleared ----
@@ -257,6 +293,15 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
     if inp.tool_results and inp.documents:
         raise BadRequest("documents_with_tool_results")
     offered_defs, offered = filter_client_tools(inp.client_tools, cfg.tools.enabled, session.user_id, sec)
+    # Action tools (reminders, Gmail, Calendar) are a separate registry from the read-only tools
+    # above, offered the same way: only names both in code (ACTION_TOOLS) and enabled by config
+    # survive. A name that filter_client_tools already dropped as "not a read-only tool" is
+    # checked again here against the action registry, so a client can request either kind by name
+    # in the same `tools` list and get whichever definition actually matches.
+    action_defs, action_offered = actiontools.filter_client_action_tools(
+        inp.client_tools, cfg.actions.enabled, session.user_id, sec)
+    offered_defs = offered_defs + action_defs
+    offered = offered | action_offered
 
     # ---- private documents: retrieval feeds the private lane only ----
     hits = []
@@ -398,8 +443,7 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
         text = msg.get("content") or ""
     except (KeyError, IndexError, TypeError, AttributeError):
         return _private_unavailable(taint)
-    kept, blocked = enforce_tool_calls(msg, offered, cfg.tools.enabled, uid, sec,
-                                       cfg.tools.max_calls_per_turn)
+    kept, blocked = _enforce_mixed_tool_calls(msg, offered, cfg, uid, sec)
     text = _clean_reply(cfg, sec, uid, text)
     if blocked and not kept:
         text = (text + "\n\n" if text.strip() else "") + BLOCKED_TEXT

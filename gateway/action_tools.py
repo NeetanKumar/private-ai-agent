@@ -42,7 +42,7 @@ import uuid
 from dataclasses import dataclass
 from email.mime.text import MIMEText
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import httpx
 
@@ -345,3 +345,79 @@ async def execute_action(name: str, args: Any, ctx: ActionContext, enabled: List
     except ToolError as e:
         raise ActionError(str(e)) from None
     return await spec.run(ctx, validated)
+
+
+# ---- chat-turn plumbing: letting a model call these by name in a normal conversation -----------
+# Mirrors gateway/permissions.py's filter_client_tools / enforce_tool_calls exactly, but against
+# ACTION_TOOLS instead of READ_ONLY_TOOLS, so the two registries can never misclassify each
+# other's calls. The gateway itself never executes an action mid-turn - the model only proposes a
+# call here; the client (UI or agent) executes it via POST /v1/actions/{name}, where confirmation
+# staging actually happens, then sends the result back as a normal tool_results message, reusing
+# the same round-trip the read-only tools already use.
+
+def filter_client_action_tools(client_names: List[str], enabled: List[str], user: str,
+                               sec) -> Tuple[List[Dict[str, Any]], Set[str]]:
+    """-> (canonical definitions to show the model, set of offered names). Silently skips a name
+    that isn't an action tool at all (it may be a read-only tool name meant for the other
+    filter) - only gateway.permissions logs unknown-tool attempts, to avoid double-logging the
+    same name from both registries."""
+    defs, offered = [], set()
+    for name in client_names:
+        spec = get_action_spec(name, enabled)
+        if spec is None:
+            continue
+        if name not in offered:
+            defs.append(spec.definition())
+            offered.add(name)
+    return defs, offered
+
+
+def enforce_action_tool_calls(calls: List[Dict[str, Any]], offered: Set[str], enabled: List[str],
+                              user: str, sec, max_calls: int) -> Tuple[List[Dict[str, Any]], int]:
+    """Validate a list of tool_calls already known to be ACTION_TOOLS names (the caller splits by
+    registry before calling this, so this never sees a read-only tool's call). Returns
+    (kept calls, number blocked), in the same canonical shape gateway.permissions uses."""
+    kept: List[Dict[str, Any]] = []
+    blocked = 0
+    seen_ids: Set[str] = set()
+    for call in calls:
+        fn = call.get("function") if isinstance(call, dict) else None
+        name = fn.get("name") if isinstance(fn, dict) else None
+        if not isinstance(name, str) or get_action_spec(name, enabled) is None:
+            blocked += 1
+            if sec:
+                sec.write(user, "action_call_blocked", name or "", "not_in_action_allowlist")
+            continue
+        if name not in offered:
+            blocked += 1
+            if sec:
+                sec.write(user, "action_call_blocked", name, "not_offered_this_turn")
+            continue
+        if len(kept) >= max_calls:
+            blocked += 1
+            if sec:
+                sec.write(user, "action_call_blocked", name, "too_many_calls")
+            continue
+        args = fn.get("arguments", {})
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except ValueError:
+                blocked += 1
+                if sec:
+                    sec.write(user, "action_call_blocked", name, "arguments_not_json")
+                continue
+        try:
+            validate_args(ACTION_TOOLS[name].schema, args)
+        except ToolError:
+            blocked += 1
+            if sec:
+                sec.write(user, "action_call_blocked", name, "invalid_arguments")
+            continue
+        cid = call.get("id") if isinstance(call.get("id"), str) and call.get("id") else ""
+        if not cid or cid in seen_ids:
+            cid = "call_" + uuid.uuid4().hex[:16]
+        seen_ids.add(cid)
+        kept.append({"id": cid, "type": "function",
+                     "function": {"name": name, "arguments": json.dumps(args)}})
+    return kept, blocked

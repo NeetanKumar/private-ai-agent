@@ -19,7 +19,7 @@ def test_definitions_endpoint_lists_only_enabled_actions(make_rig):
 
 def test_unknown_or_disabled_action_is_refused_and_logged(make_rig):
     rig = make_rig(extra_actions=["reminder_list"])
-    r = rig.action("gmail_send", {"to": "a@b.com", "subject": "x", "body": "y"})
+    r = rig.action("gmail_send", {"to": "a@example.com", "subject": "x", "body": "y"})
     assert r.status_code == 403 and r.json()["error"] == "action_not_permitted"
     assert any(e["tool"] == "gmail_send" and e["event"] == "action_call_blocked" for e in rig.sec_events())
     r2 = rig.action("delete_all_files", {})
@@ -59,10 +59,10 @@ def test_readonly_style_action_never_needs_confirmation(make_rig):
 
 def test_judge_tool_skips_confirmation_only_on_explicit_consent_hint(make_rig):
     rig = make_rig(extra_actions=["gmail_send"])   # google not configured, but staging happens first
-    r = rig.action("gmail_send", {"to": "a@b.com", "subject": "hi", "body": "hello"},
+    r = rig.action("gmail_send", {"to": "a@example.com", "subject": "hi", "body": "hello"},
                    confirm=False, context_hint="draft me an email to bob")
     assert r.json()["status"] == "needs_confirmation"
-    r2 = rig.action("gmail_send", {"to": "a@b.com", "subject": "hi", "body": "hello"},
+    r2 = rig.action("gmail_send", {"to": "a@example.com", "subject": "hi", "body": "hello"},
                     confirm=False, context_hint="yes send it")
     # explicit consent means needs_confirmation is False internally, so it tries to execute -
     # and fails cleanly because google isn't configured in this test, proving it actually attempted
@@ -71,7 +71,7 @@ def test_judge_tool_skips_confirmation_only_on_explicit_consent_hint(make_rig):
 
 def test_missing_context_hint_on_a_judge_tool_defaults_to_confirmation_required(make_rig):
     rig = make_rig(extra_actions=["gmail_send"])
-    r = rig.action("gmail_send", {"to": "a@b.com", "subject": "hi", "body": "hello"}, confirm=False)
+    r = rig.action("gmail_send", {"to": "a@example.com", "subject": "hi", "body": "hello"}, confirm=False)
     assert r.json()["status"] == "needs_confirmation"
 
 

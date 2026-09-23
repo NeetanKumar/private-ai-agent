@@ -135,11 +135,11 @@ def test_gmail_read_lists_messages_with_metadata(tmp_path):
         if request.url.path.endswith("/messages"):
             return httpx.Response(200, json={"messages": [{"id": "m1"}]})
         return httpx.Response(200, json={"snippet": "hello there", "payload": {"headers": [
-            {"name": "Subject", "value": "Test subject"}, {"name": "From", "value": "a@b.com"},
+            {"name": "Subject", "value": "Test subject"}, {"name": "From", "value": "a@example.com"},
             {"name": "Date", "value": "today"}]}})
     c = ctx(tmp_path, google=make_google(handler))
     out = run(at.execute_action("gmail_read", {}, c, ["gmail_read"]))
-    assert "Test subject" in out and "a@b.com" in out
+    assert "Test subject" in out and "a@example.com" in out
 
 
 def test_gmail_read_without_google_configured_raises(tmp_path):
@@ -157,12 +157,12 @@ def test_gmail_send_builds_mime_and_posts_raw_base64(tmp_path):
         captured["raw"] = body["raw"]
         return httpx.Response(200, json={"id": "sent123"})
     c = ctx(tmp_path, google=make_google(handler))
-    out = run(at.execute_action("gmail_send", {"to": "x@y.com", "subject": "Hi", "body": "hello world"},
+    out = run(at.execute_action("gmail_send", {"to": "x@example.com", "subject": "Hi", "body": "hello world"},
                                 c, ["gmail_send"]))
     assert "sent123" in out
     import base64
     decoded = base64.urlsafe_b64decode(captured["raw"]).decode()
-    assert "hello world" in decoded and "x@y.com" in decoded and "subject: Hi" in decoded
+    assert "hello world" in decoded and "x@example.com" in decoded and "subject: Hi" in decoded
 
 
 def test_gmail_reply_threads_correctly(tmp_path):
@@ -173,7 +173,7 @@ def test_gmail_reply_threads_correctly(tmp_path):
         calls.append(request.url.path)
         if "messages/" in request.url.path and request.method == "GET":
             return httpx.Response(200, json={"threadId": "t1", "payload": {"headers": [
-                {"name": "Subject", "value": "Original"}, {"name": "From", "value": "orig@x.com"},
+                {"name": "Subject", "value": "Original"}, {"name": "From", "value": "orig@example.com"},
                 {"name": "Message-ID", "value": "<abc@mail>"}]}})
         body = json.loads(request.content)
         assert body["threadId"] == "t1"
