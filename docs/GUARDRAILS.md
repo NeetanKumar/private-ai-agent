@@ -13,3 +13,4 @@
 - **Action-tool allowlist**: 8 hardcoded actions (`gateway/action_tools.py`), empty by default, config can only narrow
 - **Action confirmation**: write actions stage instead of executing unless confirmed; `gmail_send`/`gmail_reply`/`calendar_create` use a wording heuristic (not a model call) with a fail-safe "require confirmation" default — flagged exception, see `docs/AGENT_ACTIONS_PLAN.md`
 - **Action audit log**: every staged/executed action logged (hash of args, never raw args)
+- **Natural-language tool/action calling**: chat UI offers both registries to the model on ordinary messages; calls are validated against their own registry only (never cross-classified), and offering tools forces the private lane even if none is called — the UI withholds tools on any message eligible for the frontier this turn, so a message can't both reach the frontier and call a tool in the same turn

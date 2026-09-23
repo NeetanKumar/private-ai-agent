@@ -59,10 +59,31 @@ paste the three printed values into `infra/.env`, then list the tools you want u
 executes the action again — a retried "send email" call sends twice. Not built tonight; a
 client-supplied idempotency key checked against `ActionAuditLog` would close it.
 
+## Chat-driven natural-language tool use
+
+The chat UI now offers every enabled action tool (and read-only tool) to the model on ordinary
+messages, so typing "remind me to buy milk" can trigger a real `reminder_create` call with no
+manual `/v1/actions/{name}` request. Wiring:
+
+- `gateway/action_tools.py`: `filter_client_action_tools()` / `enforce_action_tool_calls()` —
+  same offer/validate pattern as the read-only tools, a separate registry so a call can never be
+  misclassified into the other allowlist. See `tests/security/test_mixed_tool_calls.py`.
+- `gateway/lanes.py`: `_enforce_mixed_tool_calls()` splits a model's proposed calls by registry
+  before validating either, so a single turn can offer and call both kinds together.
+- `gateway/ui/app.js`: `runChatTurn()`/`runToolCalls()` run a client-side loop (execute → send
+  the result back → repeat, capped at 4 rounds); a staged action surfaces the gateway's
+  `needs_confirmation` as a browser `confirm()` dialog before it runs.
+- **Tradeoff discovered and fixed**: offering tools forces the private lane by the project's
+  existing `tools_mode` rule, even if no tool is actually called. Since consent/auto-routing
+  would otherwise be silently defeated, `app.js` withholds `tools` from a message whenever that
+  message is actually eligible to reach the frontier (explicit frontier send, consent just
+  given, session consent already on, or `auto_route_clean`). Practical effect: a message that
+  reaches the frontier this turn cannot also call a tool this turn.
+- Covered end-to-end (real headless-Chrome UI, not just the HTTP layer) by
+  `tests/ui/natural_language_tools.mjs`.
+
 ## Not done
 
-- No UI for actions (the UI was recently trimmed to Chat + Logs only; these are API-only,
-  matching how read-only tools work without a UI tab).
 - No injection-corpus extension exercising the confirmation heuristic against hostile document
   text specifically (the existing 12-document corpus in `tests/security/injection_corpus/`
   targets the read-only tools and lane/taint rules, not this new endpoint).

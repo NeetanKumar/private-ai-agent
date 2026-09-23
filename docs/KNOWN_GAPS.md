@@ -35,8 +35,10 @@ what has and has not been verified.
   guardrail exception.** It only inspects text for it: `context_hint` MUST be the user's own
   typed words, never text from a document/email, or an injection can talk its way past
   confirmation. See `gateway/action_tools.py`'s module docstring.
-- **No UI** for actions; API-only (`/v1/actions`, `/v1/actions/{name}`).
 - **No injection-corpus coverage** of the confirmation heuristic specifically.
+- **A message can't both reach the frontier and call a tool in the same turn.** Offering tools
+  forces the private lane even if none gets called, so the chat UI withholds tools whenever a
+  message is eligible to reach the frontier this turn (see `docs/AGENT_ACTIONS_PLAN.md`).
 - **Gmail/Calendar executors are unit-tested against a mocked transport only** — never called
   against the real Google APIs (needs the one-time OAuth step, see `docs/AGENT_ACTIONS_PLAN.md`).
 
