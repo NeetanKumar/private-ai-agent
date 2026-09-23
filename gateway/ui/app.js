@@ -49,16 +49,14 @@
       if (r.status !== 200) { state.token = ""; throw new Error(ERRORS.unauthorized); }
       if (remember) store(function () { sessionStorage.setItem("pai_token", token); });
       state.session = r.data;
-      $("who").textContent = "user: " + r.data.user;
-      show($("who"), true); show($("disconnect"), true);
-      show($("login"), false); show($("app"), true);
-      renderSession();
       // Every tool and enabled action is offered to the model on every ordinary chat message, so
       // a plain natural-language request ("remind me to...", "read my last emails") can be acted
       // on without the user knowing a tool's name. This is also why tool turns are private-lane
       // only: an auto_route_clean=true deployment will not auto-route a message to the frontier
       // once any tool is enabled (which is the default), by the project's own read-only-tools
       // guardrail - not a new restriction, just its first visible effect in this UI.
+      // Fetched and applied BEFORE the app becomes usable: revealing the composer any earlier
+      // would let a message be sent in the gap with no tools offered at all, silently.
       return Promise.all([api("GET", "/v1/tools"), api("GET", "/v1/actions")]);
     }).then(function (results) {
       var readOnly = (results[0].data && results[0].data.tools) || [];
@@ -67,6 +65,10 @@
       state.toolDefs = readOnly.concat(actions).map(function (t) {
         return { type: "function", function: { name: t.function.name } };
       });
+      $("who").textContent = "user: " + state.session.user;
+      show($("who"), true); show($("disconnect"), true);
+      show($("login"), false); show($("app"), true);
+      renderSession();
     });
   }
   function disconnect() {

@@ -292,12 +292,16 @@ async def handle_chat(cfg: Settings, registry: SourceRegistry, audit: AuditLog, 
                      "none", 403)
     if inp.tool_results and inp.documents:
         raise BadRequest("documents_with_tool_results")
-    offered_defs, offered = filter_client_tools(inp.client_tools, cfg.tools.enabled, session.user_id, sec)
+    # Action-tool names are excluded from what reaches filter_client_tools: they are legitimate,
+    # just not read-only tools, and the UI now offers them on every ordinary message. Without this,
+    # every one of them would log a "not_in_readonly_allowlist" security event on every single turn
+    # (real noise, not a real signal) even though the action-tool filter right below accepts them a
+    # moment later. A name in neither registry still reaches filter_client_tools and is still logged.
+    ro_candidates = [n for n in inp.client_tools if n not in actiontools.ACTION_TOOLS]
+    offered_defs, offered = filter_client_tools(ro_candidates, cfg.tools.enabled, session.user_id, sec)
     # Action tools (reminders, Gmail, Calendar) are a separate registry from the read-only tools
     # above, offered the same way: only names both in code (ACTION_TOOLS) and enabled by config
-    # survive. A name that filter_client_tools already dropped as "not a read-only tool" is
-    # checked again here against the action registry, so a client can request either kind by name
-    # in the same `tools` list and get whichever definition actually matches.
+    # survive.
     action_defs, action_offered = actiontools.filter_client_action_tools(
         inp.client_tools, cfg.actions.enabled, session.user_id, sec)
     offered_defs = offered_defs + action_defs
