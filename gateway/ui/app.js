@@ -53,6 +53,20 @@
       show($("who"), true); show($("disconnect"), true);
       show($("login"), false); show($("app"), true);
       renderSession();
+      // Every tool and enabled action is offered to the model on every ordinary chat message, so
+      // a plain natural-language request ("remind me to...", "read my last emails") can be acted
+      // on without the user knowing a tool's name. This is also why tool turns are private-lane
+      // only: an auto_route_clean=true deployment will not auto-route a message to the frontier
+      // once any tool is enabled (which is the default), by the project's own read-only-tools
+      // guardrail - not a new restriction, just its first visible effect in this UI.
+      return Promise.all([api("GET", "/v1/tools"), api("GET", "/v1/actions")]);
+    }).then(function (results) {
+      var readOnly = (results[0].data && results[0].data.tools) || [];
+      var actions = (results[1].data && results[1].data.actions) || [];
+      state.actionNames = actions.map(function (a) { return a.function.name; });
+      state.toolDefs = readOnly.concat(actions).map(function (t) {
+        return { type: "function", function: { name: t.function.name } };
+      });
     });
   }
   function disconnect() {
@@ -99,7 +113,7 @@
     var choice = (d.choices && d.choices[0]) || {};
     var text = (choice.message && choice.message.content) || "";
     var hasTools = choice.message && choice.message.tool_calls && choice.message.tool_calls.length;
-    var empty = text ? "" : (hasTools ? "" :
+    var empty = text ? "" : (hasTools ? "Using a tool…" :
       choice.finish_reason === "length"
         ? "The model ran out of tokens before it finished its answer. Small reasoning models can use them all while thinking. Try again, start a new session, or turn reasoning off."
         : "The model returned no text.");
@@ -122,31 +136,95 @@
   }
   function hideOffer() { show($("offer"), false); }
 
+  var MAX_TOOL_ROUNDS = 4;   // client-side safety cap on how many times the model may call a tool
+                            // in one turn, independent of the gateway's own per-response cap
+
   function send(text, overrides) {
     if (state.busy || !text.trim()) return Promise.resolve();
     overrides = overrides || {};
-    var body = {
-      messages: [{ role: "user", content: text }],
-      lane: overrides.lane || "auto"
-    };
-    if (state.context.length) body.context = state.context.map(function (c) { return { text: c.text, source: c.source }; });
+    var toFrontier = overrides.lane === "frontier";
+    addMsg("user", text);
+    var ctx = state.context;
+    if (ctx.length) { addMsg("note", "attached context: " + ctx.map(function (c) { return c.source; }).join(", ")); }
+    state.context = []; renderChips();
+    var body = { messages: [{ role: "user", content: text }], lane: overrides.lane || "auto" };
+    if (ctx.length) body.context = ctx.map(function (c) { return { text: c.text, source: c.source }; });
     var scope = state.session && state.session.consent_scope;
     if (scope === "request" && (overrides.consent || $("req-consent").checked)) body.consent = true;
+    // Tool turns are private-lane only (a hard rule, not a UI choice), so offering tools on a
+    // message that is actually eligible to reach the frontier would silently force it to stay
+    // local instead. Withhold tools whenever this message could route out: an explicit frontier
+    // send, per-message consent just given, session-wide consent already on, or the deployment
+    // auto-routing clean messages. Everything else - the ordinary case - offers tools, which is
+    // what lets a plain "remind me to..." get acted on without the user naming a tool.
+    var frontierEligible = toFrontier || body.consent === true ||
+      (state.session && state.session.auto_route_clean) ||
+      (state.session && scope === "session" && state.session.consent);
+    if (!frontierEligible && state.toolDefs && state.toolDefs.length) body.tools = state.toolDefs;
     state.busy = true; $("send").disabled = true; hideOffer();
-    addMsg("user", text);
-    if (state.context.length) addMsg("note", "attached context: " + state.context.map(function (c) { return c.source; }).join(", "));
-    var wait = addMsg("note", "thinking…");
+    return runChatTurn(body, text, 0)
+      .catch(function () { addMsg("error", "Could not reach the gateway."); })
+      .then(function () { state.busy = false; $("send").disabled = false; return refreshSession(); });
+  }
+
+  function runChatTurn(body, originalText, round) {
+    var wait = addMsg("note", round === 0 ? "thinking…" : "using the result…");
     return api("POST", "/v1/chat/completions", body).then(function (r) {
       wait.remove();
-      state.context = []; renderChips();
-      if (r.status === 200 && r.data && r.data.choices) {
-        addAssistant(r.data);
-        state.lastQuestion = text;
-        if (text.trim() === "/new") { clear($("messages")); addMsg("note", "New session started. Taint and consent cleared."); }
-        else if (r.data.frontier_offer && r.data.lane === "private") show($("offer"), true);
-      } else { addError(r); }
-    }).catch(function () { wait.remove(); addMsg("error", "Could not reach the gateway."); })
-      .then(function () { state.busy = false; $("send").disabled = false; return refreshSession(); });
+      if (!(r.status === 200 && r.data && r.data.choices)) { addError(r); return; }
+      var msg = r.data.choices[0].message || {};
+      var calls = msg.tool_calls;
+      addAssistant(r.data);
+      if (calls && calls.length && round < MAX_TOOL_ROUNDS) {
+        return runToolCalls(calls, originalText).then(function (toolMessages) {
+          var next = { messages: toolMessages };
+          if (body.tools) next.tools = body.tools;
+          return runChatTurn(next, originalText, round + 1);
+        });
+      }
+      state.lastQuestion = originalText;
+      if (originalText.trim() === "/new") { clear($("messages")); addMsg("note", "New session started. Taint and consent cleared."); }
+      else if (r.data.frontier_offer && r.data.lane === "private") show($("offer"), true);
+    });
+  }
+
+  /* Runs each tool call the model proposed and returns the tool_results messages to send back.
+     Read-only tools execute immediately via /v1/tools/{name}. Action tools go through
+     /v1/actions/{name}: if the gateway reports needs_confirmation, the user is asked here, in
+     the browser, before anything runs - the same confirm() pattern already used for sending a
+     question to the frontier. `context_hint` is the user's own typed message for this turn only,
+     never anything drawn from a document or tool result (see gateway/action_tools.py). */
+  function runToolCalls(calls, originalText) {
+    return Promise.all(calls.map(function (c) {
+      var name = c.function.name, args;
+      try { args = JSON.parse(c.function.arguments || "{}"); } catch (e) { args = {}; }
+      addMsg("note", (isAction(name) ? "action: " : "tool: ") + name + "(" + JSON.stringify(args) + ")");
+      var run = isAction(name) ? runAction(name, args, originalText) : runReadOnlyTool(name, args);
+      return run.then(function (content) { return { role: "tool", tool_call_id: c.id, content: content }; });
+    }));
+  }
+  function isAction(name) { return (state.actionNames || []).indexOf(name) !== -1; }
+
+  function runReadOnlyTool(name, args) {
+    return api("POST", "/v1/tools/" + name, { arguments: args }).then(function (r) {
+      return r.status === 200 ? r.data.content : "error: " + ((r.data && r.data.error) || r.status);
+    });
+  }
+
+  function runAction(name, args, originalText) {
+    return api("POST", "/v1/actions/" + name, { arguments: args, confirm: false, context_hint: originalText })
+      .then(function (r) {
+        if (r.status !== 200) return "error: " + ((r.data && r.data.error) || r.status);
+        if (r.data.status !== "needs_confirmation") {
+          return r.data.status === "executed" ? r.data.result : "error: " + (r.data.error || "unknown");
+        }
+        var ok = window.confirm("The assistant wants to run \"" + name + "\" with:\n\n" +
+          JSON.stringify(args, null, 2) + "\n\nAllow it?");
+        if (!ok) return "declined by the user: this action was not performed.";
+        return api("POST", "/v1/actions/" + name, { arguments: args, confirm: true }).then(function (r2) {
+          return r2.status === 200 ? r2.data.result : "error: " + ((r2.data && r2.data.error) || r2.status);
+        });
+      });
   }
 
   function sendToFrontier() {

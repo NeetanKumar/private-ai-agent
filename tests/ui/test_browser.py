@@ -52,11 +52,11 @@ def tools():
     return node, chrome
 
 
-def run_scenario(tools, scenario, scope, tmp_path):
+def run_scenario(tools, scenario, scope, tmp_path, server_file="stub_server.py"):
     node, chrome = tools
     app_port, dbg_port = free_port(), free_port()
     env = {**os.environ, "PORT": str(app_port), "SCOPE": scope}
-    server = subprocess.Popen([sys.executable, str(HERE / "stub_server.py")], env=env,
+    server = subprocess.Popen([sys.executable, str(HERE / server_file)], env=env,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     profile = tempfile.mkdtemp(prefix="chrome-profile-")
     browser = subprocess.Popen([chrome, "--headless=new", "--disable-gpu", "--no-first-run",
@@ -88,4 +88,13 @@ def test_ui_session_scope_end_to_end_in_a_real_browser(tools, tmp_path):
 
 def test_ui_request_scope_end_to_end_in_a_real_browser(tools, tmp_path):
     r = run_scenario(tools, "request_scope.mjs", "request", tmp_path)
+    assert r.returncode == 0 and "CHECKS PASSED" in r.stdout, r.stdout[-3000:] + r.stderr[-1500:]
+
+
+def test_ui_natural_language_action_call_end_to_end_in_a_real_browser(tools, tmp_path):
+    """Types a plain-English request into the real chat box and verifies the model's scripted
+    reminder_create tool call round-trips through the confirmation dialog and executes - the
+    capability this whole wiring pass was for, not just the request/session consent scenarios."""
+    r = run_scenario(tools, "natural_language_tools.mjs", "session", tmp_path,
+                     server_file="stub_server_actions.py")
     assert r.returncode == 0 and "CHECKS PASSED" in r.stdout, r.stdout[-3000:] + r.stderr[-1500:]
